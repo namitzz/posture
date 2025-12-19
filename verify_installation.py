@@ -56,6 +56,10 @@ def check_camera():
         return False
 
 
+# API key placeholder constant
+PLACEHOLDER_KEY = 'your-api-key-here'
+
+
 def check_openai_key():
     """Check if OpenAI API key is configured."""
     print("Checking OpenAI API key...", end=" ")
@@ -65,7 +69,7 @@ def check_openai_key():
         load_dotenv()
         
         key = os.getenv('OPENAI_API_KEY')
-        if key and key != 'your-api-key-here':
+        if key and key != PLACEHOLDER_KEY:
             print("✓ Configured")
             return True
         else:

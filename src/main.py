@@ -16,6 +16,10 @@ class PostureApp:
     Main application for real-time gym form correction.
     """
     
+    # Configuration constants
+    CAMERA_WIDTH = 1280
+    CAMERA_HEIGHT = 720
+    
     def __init__(self):
         """Initialize the application."""
         print("Initializing Real-Time Gym Form Correction App...")
@@ -47,8 +51,8 @@ class PostureApp:
             return
         
         # Set camera properties
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.CAMERA_WIDTH)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.CAMERA_HEIGHT)
         
         # Start audio system
         self.audio_system.start()
@@ -171,13 +175,12 @@ class PostureApp:
         y_offset += 35
         
         # Knee angle
-        if 'knee_angle' in analysis:
-            angle_text = f"Knee Angle: {analysis['knee_angle']:.0f}°"
-            cv2.putText(
-                frame, angle_text, (10, y_offset),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2
-            )
-            y_offset += 35
+        angle_text = f"Knee Angle: {analysis.get('knee_angle', 0):.0f}°"
+        cv2.putText(
+            frame, angle_text, (10, y_offset),
+            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2
+        )
+        y_offset += 35
         
         # Feedback
         if analysis['feedback']:

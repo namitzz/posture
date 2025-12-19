@@ -110,17 +110,22 @@ class AudioCueSystem:
             total_reps: Total reps completed
         """
         self.play_cue('set_complete')
-        # Give a moment before speaking the count
-        time.sleep(0.5)
-        self._speak(f"{total_reps} reps")
+        # Queue the rep count announcement separately to avoid blocking
+        self.cue_queue.put(('custom', f"{total_reps} reps"))
     
     def _process_queue(self):
         """Process audio cues from the queue."""
         while self.is_running:
             try:
                 if not self.cue_queue.empty():
-                    cue_name = self.cue_queue.get(timeout=0.1)
-                    text = self.CUES.get(cue_name, "")
+                    item = self.cue_queue.get(timeout=0.1)
+                    
+                    # Handle custom text or predefined cues
+                    if isinstance(item, tuple) and item[0] == 'custom':
+                        text = item[1]
+                    else:
+                        text = self.CUES.get(item, "")
+                    
                     if text:
                         self._speak(text)
                 else:

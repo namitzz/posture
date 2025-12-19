@@ -20,6 +20,14 @@ class SquatAnalyzer:
     Tracks reps, angles, and provides form feedback.
     """
     
+    # Configuration constants - can be customized per user
+    DESCENT_ANGLE = 140      # Start of descent
+    BOTTOM_ANGLE = 100       # Deep squat position
+    ASCENT_ANGLE = 140       # Rising back up
+    GOOD_DEPTH_ANGLE = 90    # Parallel or below
+    KNEE_VALGUS_THRESHOLD = 0.15  # Knees caving in (15% hip-width reduction)
+    FORWARD_LEAN_THRESHOLD = 20   # Excessive forward lean
+    
     def __init__(self):
         """Initialize the squat analyzer."""
         self.state = SquatState.STANDING
@@ -30,16 +38,6 @@ class SquatAnalyzer:
             'form_issues': []
         }
         self.set_data = []
-        
-        # Thresholds for squat detection
-        self.DESCENT_ANGLE = 140  # Start of descent
-        self.BOTTOM_ANGLE = 100   # Deep squat position
-        self.ASCENT_ANGLE = 140   # Rising back up
-        
-        # Form thresholds
-        self.GOOD_DEPTH_ANGLE = 90  # Parallel or below
-        self.KNEE_VALGUS_THRESHOLD = 0.15  # Knees caving in
-        self.FORWARD_LEAN_THRESHOLD = 20   # Excessive forward lean
     
     def analyze_frame(self, landmarks_dict):
         """
@@ -55,6 +53,8 @@ class SquatAnalyzer:
             return {
                 'state': self.state.value,
                 'rep_count': self.rep_count,
+                'knee_angle': 0,
+                'hip_angle': 0,
                 'feedback': [],
                 'valid_pose': False
             }

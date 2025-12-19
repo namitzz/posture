@@ -46,10 +46,11 @@ class AICoach:
             # Create prompt with set data
             prompt = self._create_summary_prompt(set_summary)
             
-            # Call GPT-4
-            response = self.client.chat.completions.create(
-                model="gpt-4",
-                messages=[
+            # Call GPT-4 (with fallback to GPT-3.5 if unavailable)
+            try:
+                response = self.client.chat.completions.create(
+                    model="gpt-4o",
+                    messages=[
                     {
                         "role": "system",
                         "content": "You are an expert strength coach providing concise, encouraging feedback on squat form. Keep responses under 3 sentences. Be specific about form issues but stay positive."
@@ -62,6 +63,26 @@ class AICoach:
                 max_tokens=150,
                 temperature=0.7
             )
+            except Exception as model_error:
+                # Fallback to GPT-3.5 if GPT-4 unavailable
+                if "model" in str(model_error).lower():
+                    response = self.client.chat.completions.create(
+                        model="gpt-3.5-turbo",
+                        messages=[
+                            {
+                                "role": "system",
+                                "content": "You are an expert strength coach providing concise, encouraging feedback on squat form. Keep responses under 3 sentences. Be specific about form issues but stay positive."
+                            },
+                            {
+                                "role": "user",
+                                "content": prompt
+                            }
+                        ],
+                        max_tokens=150,
+                        temperature=0.7
+                    )
+                else:
+                    raise
             
             return response.choices[0].message.content.strip()
         
