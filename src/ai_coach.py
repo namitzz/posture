@@ -15,6 +15,10 @@ class AICoach:
     on workout performance using GPT-4.
     """
     
+    # Model configuration
+    PRIMARY_MODEL = "gpt-3.5-turbo"
+    FALLBACK_MODEL = "gpt-4o"
+    
     def __init__(self, api_key=None):
         """
         Initialize the AI coach.
@@ -54,7 +58,7 @@ class AICoach:
             # Call GPT-3.5-turbo (as specified in requirements)
             try:
                 response = self.client.chat.completions.create(
-                    model="gpt-3.5-turbo",
+                    model=self.PRIMARY_MODEL,
                     messages=[
                         {
                             "role": "user",
@@ -68,7 +72,7 @@ class AICoach:
                 # Fallback to GPT-4 if 3.5 unavailable
                 if "model" in str(model_error).lower():
                     response = self.client.chat.completions.create(
-                        model="gpt-4o",
+                        model=self.FALLBACK_MODEL,
                         messages=[
                             {
                                 "role": "user",

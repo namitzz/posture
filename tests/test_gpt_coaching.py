@@ -197,8 +197,7 @@ def test_tracking_form_issues():
     analyzer = SquatAnalyzer()
     
     # Simulate rep with knee valgus
-    analyzer.state = analyzer.state
-    for config in ['standing', 'descending', 'knee_valgus', 'descending', 'standing']:
+    for config in ['standing', 'descending', 'knee_valgus', 'ascending', 'standing']:
         landmarks = create_mock_landmarks(config)
         for _ in range(3):
             result = analyzer.analyze_frame(landmarks)
