@@ -113,6 +113,16 @@ class AudioCueSystem:
         # Queue the rep count announcement separately to avoid blocking
         self.cue_queue.put(('custom', f"{total_reps} reps"))
     
+    def speak_coaching_summary(self, summary_text):
+        """
+        Speak the AI coaching summary using text-to-speech.
+        
+        Args:
+            summary_text: Coaching feedback text to speak
+        """
+        if summary_text and summary_text not in ["Do more reps to receive coaching", "Couldn't get feedback. Try again later."]:
+            self.cue_queue.put(('custom', summary_text))
+    
     def _process_queue(self):
         """Process audio cues from the queue."""
         while self.is_running:

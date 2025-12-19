@@ -38,6 +38,8 @@ class PostureApp:
         self.is_tracking = False
         self.last_rep_count = 0
         self.frame_count = 0
+        self.last_coaching_feedback = None
+        self.show_coaching_feedback = False
         
         print("✓ Initialization complete!")
     
@@ -61,6 +63,7 @@ class PostureApp:
         print("Controls:")
         print("  SPACE - Start/Stop tracking")
         print("  R - Reset rep counter")
+        print("  P - Play AI coaching summary (after set)")
         print("  Q - Quit")
         print("\nPosition yourself in front of the camera and press SPACE to start!\n")
         
@@ -97,6 +100,8 @@ class PostureApp:
                     self._toggle_tracking()
                 elif key == ord('r'):
                     self._reset_tracking()
+                elif key == ord('p'):
+                    self._play_coaching_summary()
                 
                 self.frame_count += 1
         
@@ -151,6 +156,10 @@ class PostureApp:
             cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2
         )
         
+        # Display AI coaching feedback if available
+        if self.last_coaching_feedback and self.show_coaching_feedback:
+            self._draw_coaching_feedback(frame)
+        
         # Instructions
         if not self.is_tracking:
             instruction = "Press SPACE to start tracking"
@@ -203,6 +212,8 @@ class PostureApp:
         
         if self.is_tracking:
             print("\n▶ Started tracking")
+            # Hide coaching feedback when starting new set
+            self.show_coaching_feedback = False
         else:
             print("\n⏸ Paused tracking")
             
@@ -217,6 +228,7 @@ class PostureApp:
         
         self.squat_analyzer.reset()
         self.last_rep_count = 0
+        self.show_coaching_feedback = False
         print("\n↺ Reset rep counter")
     
     def _generate_set_summary(self):
@@ -232,6 +244,12 @@ class PostureApp:
         print(f"Total Reps: {set_summary['total_reps']}")
         print(f"Average Depth: {set_summary['avg_depth_angle']:.1f}°")
         
+        # Display per-rep summaries
+        print("\nPer-Rep Analysis:")
+        rep_summaries_text = self.squat_analyzer.get_rep_summaries_text()
+        if rep_summaries_text:
+            print(rep_summaries_text)
+        
         if set_summary['form_issues']:
             print("\nForm Issues:")
             for issue, count in set_summary['form_issues'].items():
@@ -243,9 +261,81 @@ class PostureApp:
         print("\n🤖 AI COACH:")
         self.audio_system.announce_set_complete(set_summary['total_reps'])
         
-        coaching = self.ai_coach.generate_set_summary(set_summary)
+        coaching = self.ai_coach.generate_set_summary(set_summary, rep_summaries_text)
         print(f"   {coaching}")
         print("="*50 + "\n")
+        
+        # Store for display and audio playback
+        self.last_coaching_feedback = coaching
+        self.show_coaching_feedback = True
+    
+    def _draw_coaching_feedback(self, frame):
+        """Draw AI coaching feedback on the frame."""
+        height, width = frame.shape[:2]
+        
+        # Create semi-transparent overlay for feedback box
+        overlay = frame.copy()
+        
+        # Define feedback box dimensions
+        box_height = 150
+        box_width = width - 40
+        box_x = 20
+        box_y = height - box_height - 20
+        
+        # Draw rounded rectangle background
+        cv2.rectangle(overlay, (box_x, box_y), (box_x + box_width, box_y + box_height), 
+                     (50, 50, 50), -1)
+        
+        # Blend overlay with original frame
+        alpha = 0.8
+        cv2.addWeighted(overlay, alpha, frame, 1 - alpha, 0, frame)
+        
+        # Draw border
+        cv2.rectangle(frame, (box_x, box_y), (box_x + box_width, box_y + box_height), 
+                     (0, 255, 255), 2)
+        
+        # Draw title
+        cv2.putText(frame, "AI COACH FEEDBACK", (box_x + 10, box_y + 30),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+        
+        # Draw feedback text (word wrap for long text)
+        text = self.last_coaching_feedback
+        max_width = box_width - 20
+        words = text.split()
+        lines = []
+        current_line = []
+        
+        for word in words:
+            test_line = ' '.join(current_line + [word])
+            text_size = cv2.getTextSize(test_line, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)[0]
+            if text_size[0] <= max_width:
+                current_line.append(word)
+            else:
+                if current_line:
+                    lines.append(' '.join(current_line))
+                current_line = [word]
+        
+        if current_line:
+            lines.append(' '.join(current_line))
+        
+        # Draw each line
+        y_text = box_y + 60
+        for line in lines[:3]:  # Max 3 lines
+            cv2.putText(frame, line, (box_x + 10, y_text),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+            y_text += 25
+        
+        # Draw instruction
+        cv2.putText(frame, "Press 'P' to play audio", (box_x + 10, box_y + box_height - 10),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.4, (200, 200, 200), 1)
+    
+    def _play_coaching_summary(self):
+        """Play the coaching summary via text-to-speech."""
+        if self.last_coaching_feedback:
+            print("▶ Playing coaching summary...")
+            self.audio_system.speak_coaching_summary(self.last_coaching_feedback)
+        else:
+            print("No coaching feedback available to play.")
 
 
 def main():

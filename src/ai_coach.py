@@ -29,50 +29,47 @@ class AICoach:
         else:
             self.client = OpenAI(api_key=self.api_key)
     
-    def generate_set_summary(self, set_summary):
+    def generate_set_summary(self, set_summary, rep_summaries_text=None):
         """
         Generate a natural language summary of a completed set.
         
         Args:
             set_summary: Dictionary with set statistics
+            rep_summaries_text: Optional pre-formatted rep summaries text
         
         Returns:
             String with coaching feedback
         """
+        # Handle edge case: less than 3 reps
+        if set_summary['total_reps'] < 3:
+            return "Do more reps to receive coaching"
+        
         if not self.client:
             return self._generate_fallback_summary(set_summary)
         
         try:
             # Create prompt with set data
-            prompt = self._create_summary_prompt(set_summary)
+            prompt = self._create_summary_prompt(set_summary, rep_summaries_text)
             
-            # Call GPT-4 (with fallback to GPT-3.5 if unavailable)
+            # Call GPT-3.5-turbo (as specified in requirements)
             try:
                 response = self.client.chat.completions.create(
-                    model="gpt-4o",
+                    model="gpt-3.5-turbo",
                     messages=[
-                    {
-                        "role": "system",
-                        "content": "You are an expert strength coach providing concise, encouraging feedback on squat form. Keep responses under 3 sentences. Be specific about form issues but stay positive."
-                    },
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ],
-                max_tokens=150,
-                temperature=0.7
-            )
+                        {
+                            "role": "user",
+                            "content": prompt
+                        }
+                    ],
+                    max_tokens=150,
+                    temperature=0.7
+                )
             except Exception as model_error:
-                # Fallback to GPT-3.5 if GPT-4 unavailable
+                # Fallback to GPT-4 if 3.5 unavailable
                 if "model" in str(model_error).lower():
                     response = self.client.chat.completions.create(
-                        model="gpt-3.5-turbo",
+                        model="gpt-4o",
                         messages=[
-                            {
-                                "role": "system",
-                                "content": "You are an expert strength coach providing concise, encouraging feedback on squat form. Keep responses under 3 sentences. Be specific about form issues but stay positive."
-                            },
                             {
                                 "role": "user",
                                 "content": prompt
@@ -84,43 +81,55 @@ class AICoach:
                 else:
                     raise
             
-            return response.choices[0].message.content.strip()
+            # Parse response
+            if response and response.choices and len(response.choices) > 0:
+                return response.choices[0].message.content.strip()
+            else:
+                return "Couldn't get feedback. Try again later."
         
         except Exception as e:
             print(f"AI Coach error: {e}")
-            return self._generate_fallback_summary(set_summary)
+            return "Couldn't get feedback. Try again later."
     
-    def _create_summary_prompt(self, set_summary):
+    def _create_summary_prompt(self, set_summary, rep_summaries_text=None):
         """Create a prompt for the AI with set statistics."""
         total_reps = set_summary['total_reps']
-        avg_depth = set_summary['avg_depth_angle']
-        form_issues = set_summary['form_issues']
         
-        prompt = f"I just completed {total_reps} squats. "
-        
-        # Depth analysis
-        if avg_depth < 90:
-            prompt += f"Average depth was excellent (knee angle: {avg_depth:.0f}°). "
-        elif avg_depth < 100:
-            prompt += f"Average depth was good (knee angle: {avg_depth:.0f}°). "
+        # Use provided rep summaries or generate from rep_details
+        if rep_summaries_text:
+            summaries = rep_summaries_text
         else:
-            prompt += f"Average depth was shallow (knee angle: {avg_depth:.0f}°). "
+            # Generate from rep_details if available
+            summaries = []
+            if 'rep_details' in set_summary:
+                for i, rep in enumerate(set_summary['rep_details'], 1):
+                    if 'summary' in rep:
+                        summaries.append(f"- {rep['summary']}")
+                    else:
+                        # Fallback: generate basic summary
+                        depth = rep['min_knee_angle']
+                        issues = rep.get('form_issues', [])
+                        if not issues:
+                            summaries.append(f"- Rep {i}: Good rep")
+                        else:
+                            parts = []
+                            if depth > 90:
+                                parts.append("Depth shallow")
+                            else:
+                                parts.append("Depth good")
+                            if 'knee_valgus' in issues:
+                                parts.append("knees caved in")
+                            if 'forward_lean' in issues:
+                                parts.append("chest leaned forward")
+                            summaries.append(f"- Rep {i}: {', '.join(parts)}")
+            summaries = "\n".join(summaries) if summaries else ""
         
-        # Form issues
-        if form_issues:
-            issues_text = []
-            if 'knee_valgus' in form_issues:
-                issues_text.append(f"knees caving in ({form_issues['knee_valgus']} reps)")
-            if 'forward_lean' in form_issues:
-                issues_text.append(f"excessive forward lean ({form_issues['forward_lean']} reps)")
-            if 'shallow_depth' in form_issues:
-                issues_text.append(f"shallow depth ({form_issues['shallow_depth']} reps)")
-            
-            prompt += f"Form issues: {', '.join(issues_text)}. "
-        else:
-            prompt += "No form issues detected. "
-        
-        prompt += "Give me brief coaching feedback."
+        # Use exact prompt format from requirements
+        prompt = f"""Here is the summary of {total_reps} squat reps:
+
+{summaries}
+
+Please give a short, 2–3 sentence feedback summary like a human strength coach. Be supportive but point out errors."""
         
         return prompt
     
