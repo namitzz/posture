@@ -35,7 +35,10 @@ class SquatAnalyzer:
         self.current_rep_data = {
             'min_knee_angle': 180,
             'max_knee_angle': 0,
-            'form_issues': []
+            'form_issues': [],
+            'had_knee_valgus': False,
+            'had_forward_lean': False,
+            'had_shallow_depth': False
         }
         self.set_data = []
     
@@ -162,17 +165,20 @@ class SquatAnalyzer:
             if knee_angle > self.GOOD_DEPTH_ANGLE + 10:
                 feedback.append("Go deeper - squat to parallel")
                 self.current_rep_data['form_issues'].append('shallow_depth')
+                self.current_rep_data['had_shallow_depth'] = True
         
         # Check knee alignment
         knee_valgus = self._check_knee_valgus(landmarks_dict)
         if knee_valgus:
             feedback.append("Knees out - push knees outward")
             self.current_rep_data['form_issues'].append('knee_valgus')
+            self.current_rep_data['had_knee_valgus'] = True
         
         # Check forward lean
         if hip_angle < 70:
             feedback.append("Chest up - keep torso upright")
             self.current_rep_data['form_issues'].append('forward_lean')
+            self.current_rep_data['had_forward_lean'] = True
         
         return feedback
     
@@ -195,16 +201,57 @@ class SquatAnalyzer:
         # If knees are significantly closer than hips, it's valgus
         return (hip_width - knee_width) / hip_width > self.KNEE_VALGUS_THRESHOLD
     
+    def _generate_rep_summary(self, rep_number, rep_data):
+        """
+        Generate a human-readable summary for a single rep.
+        Format: "Rep X: Depth good, knees stable"
+        """
+        summary_parts = []
+        
+        # Analyze depth
+        depth = rep_data['min_knee_angle']
+        if depth <= self.GOOD_DEPTH_ANGLE:
+            summary_parts.append("Depth good")
+        else:
+            summary_parts.append("Depth shallow")
+        
+        # Analyze knee stability
+        if rep_data['had_knee_valgus']:
+            summary_parts.append("knees caved in")
+        else:
+            summary_parts.append("knees stable")
+        
+        # Analyze chest angle
+        if rep_data['had_forward_lean']:
+            summary_parts.append("chest leaned forward")
+        else:
+            summary_parts.append("chest upright")
+        
+        # Check if it's a "good rep" (no issues)
+        if not rep_data['form_issues']:
+            return f"Rep {rep_number}: Good rep"
+        
+        return f"Rep {rep_number}: {', '.join(summary_parts)}"
+    
     def _complete_rep(self):
         """Complete the current rep and save data."""
         self.rep_count += 1
-        self.set_data.append(self.current_rep_data.copy())
+        
+        # Generate human-readable summary for this rep
+        rep_summary = self._generate_rep_summary(self.rep_count, self.current_rep_data)
+        rep_data = self.current_rep_data.copy()
+        rep_data['summary'] = rep_summary
+        
+        self.set_data.append(rep_data)
         
         # Reset for next rep
         self.current_rep_data = {
             'min_knee_angle': 180,
             'max_knee_angle': 0,
-            'form_issues': []
+            'form_issues': [],
+            'had_knee_valgus': False,
+            'had_forward_lean': False,
+            'had_shallow_depth': False
         }
     
     def get_set_summary(self):
@@ -230,6 +277,22 @@ class SquatAnalyzer:
             'rep_details': self.set_data
         }
     
+    def get_rep_summaries_text(self):
+        """
+        Get per-rep summaries formatted as text for GPT prompt.
+        Returns a string like:
+        - Rep 1: Depth good, knees stable
+        - Rep 2: Depth shallow, knees caved in
+        """
+        if not self.set_data:
+            return ""
+        
+        summaries = []
+        for rep_data in self.set_data:
+            summaries.append(f"- {rep_data['summary']}")
+        
+        return "\n".join(summaries)
+    
     def reset(self):
         """Reset the analyzer for a new set."""
         self.state = SquatState.STANDING
@@ -237,6 +300,9 @@ class SquatAnalyzer:
         self.current_rep_data = {
             'min_knee_angle': 180,
             'max_knee_angle': 0,
-            'form_issues': []
+            'form_issues': [],
+            'had_knee_valgus': False,
+            'had_forward_lean': False,
+            'had_shallow_depth': False
         }
         self.set_data = []
