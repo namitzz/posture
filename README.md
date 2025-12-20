@@ -135,25 +135,6 @@ Run the test suite:
 python -m pytest tests/
 ```
 
-## 📸 Screenshots
-
-See the UI in action! Check out our [comprehensive screenshot gallery](docs/screenshots/) showing:
-- Real-time tracking interface with rep counter
-- Color-coded form feedback cues (good/warning/critical)
-- AI-powered set summary with coaching insights
-- Interactive settings menu
-- All UI states and features
-
-Quick preview:
-
-![Tracking View](docs/screenshots/01_tracking_view.png)
-*Real-time tracking with skeleton overlay and rep counter*
-
-![Set Summary](docs/screenshots/05_set_summary.png)
-*AI coaching summary after completing a set*
-
-View all screenshots in the [docs/screenshots/](docs/screenshots/) directory.
-
 ## 📹 Demo (Coming Soon)
 
 Short demo clip showing:

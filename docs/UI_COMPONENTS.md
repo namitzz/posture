@@ -184,41 +184,14 @@ This will:
 
 ## Screenshots
 
-All UI screenshots are available in the [`docs/screenshots/`](screenshots/) directory. See the [Screenshots README](screenshots/README.md) for detailed descriptions.
+### 1. Cue Display
+Shows real-time form feedback with fade animation and semi-transparent background.
 
-### 1. Tracking View
-Main interface with rep counter and skeleton overlay.
+### 2. Set Summary Screen
+Displays post-set statistics and AI coaching with smooth slide-in animation.
 
-![Tracking View](screenshots/01_tracking_view.png)
-
-### 2. Form Feedback Cues
-Real-time form feedback with color-coded animations:
-- **Good Form** (Green): Positive reinforcement
-
-![Good Form](screenshots/02_cue_good_form.png)
-
-- **Warning** (Orange): Minor corrections needed
-
-![Warning Cue](screenshots/03_cue_warning.png)
-
-- **Critical** (Red): Immediate attention required
-
-![Bad Form](screenshots/04_cue_bad_form.png)
-
-### 3. Set Summary Screen
-Post-set statistics and AI coaching with slide-in animation.
-
-![Set Summary](screenshots/05_set_summary.png)
-
-### 4. Settings Screen
+### 3. Settings Screen
 Interactive settings menu with keyboard navigation and toggle controls.
-
-![Settings Screen](screenshots/06_settings_screen.png)
-
-### 5. Paused State
-Application paused state with status indicator.
-
-![Paused State](screenshots/07_paused_state.png)
 
 ## Settings Control
 
