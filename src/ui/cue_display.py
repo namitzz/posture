@@ -33,7 +33,7 @@ class CueDisplay:
         }
         
         # Font settings for demo
-        self.FONT = cv2.FONT_HERSHEY_BOLD
+        self.FONT = cv2.FONT_HERSHEY_SIMPLEX
         self.FONT_SCALE = 1.5
         self.FONT_THICKNESS = 3
     

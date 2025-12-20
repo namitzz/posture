@@ -93,7 +93,7 @@ class SettingsScreen:
         # Title
         cv2.putText(
             frame, "SETTINGS", (panel_x + 30, panel_y + 50),
-            cv2.FONT_HERSHEY_BOLD, 1.2, self.TEXT_COLOR, 3
+            cv2.FONT_HERSHEY_DUPLEX, 1.2, self.TEXT_COLOR, 3
         )
         
         # Draw settings items
@@ -162,7 +162,7 @@ class SettingsScreen:
         
         cv2.putText(
             frame, toggle_text, (toggle_x, y),
-            cv2.FONT_HERSHEY_BOLD, 0.7, toggle_color, 2
+            cv2.FONT_HERSHEY_DUPLEX, 0.7, toggle_color, 2
         )
     
     def navigate_up(self):

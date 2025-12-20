@@ -31,6 +31,8 @@ This helps:
 - ✅ Live camera feed + skeleton overlay
 - ✅ Real-time rep detection
 - ✅ Form feedback + audio prompts
+- ✅ Enhanced UI with animations and settings
+- ✅ Set summary screen with AI coaching
 - 🔜 Add fatigue detection + AI personalization
 
 ## 📦 Installation
@@ -85,7 +87,26 @@ This will:
 
 - **Space**: Start/Stop tracking
 - **R**: Reset rep counter
+- **P**: Play AI coaching summary (after set)
+- **S**: Toggle settings screen
+- **Arrow Keys**: Navigate settings menu
+- **Enter**: Toggle selected setting
 - **Q**: Quit application
+
+### New Features
+
+#### Enhanced UI
+- **Dark Mode**: Professional dark theme throughout
+- **Animated Cues**: Real-time form feedback with fade-in/fade-out animations
+- **Set Summary**: Slide-in panel showing rep stats and AI coaching
+- **Settings Menu**: Interactive controls for all features
+
+#### Settings Control
+Press **S** to access settings and toggle:
+- Skeleton overlay visibility
+- Audio cues on/off
+- AI coaching on/off
+- Debug mode (shows angles)
 
 ## 📁 Project Structure
 

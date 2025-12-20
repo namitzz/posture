@@ -138,7 +138,7 @@ class SetSummaryScreen:
         # Title
         cv2.putText(
             frame, "SET COMPLETE!", (x, y + 30),
-            cv2.FONT_HERSHEY_BOLD, 1.2, self.TITLE_COLOR, 3
+            cv2.FONT_HERSHEY_DUPLEX, 1.2, self.TITLE_COLOR, 3
         )
         
         y += 70
@@ -166,7 +166,7 @@ class SetSummaryScreen:
         # AI Coaching section
         cv2.putText(
             frame, "AI COACH:", (x, y),
-            cv2.FONT_HERSHEY_BOLD, 0.9, self.TITLE_COLOR, 2
+            cv2.FONT_HERSHEY_DUPLEX, 0.9, self.TITLE_COLOR, 2
         )
         y += 35
         
