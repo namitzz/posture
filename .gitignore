@@ -48,3 +48,6 @@ test_videos/
 __pycache__/
 *.png
 *.jpg
+# But allow documentation screenshots
+!docs/screenshots/*.png
+!docs/screenshots/*.jpg
