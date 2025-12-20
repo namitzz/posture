@@ -44,3 +44,7 @@ Thumbs.db
 *.avi
 *.mov
 test_videos/
+*.pyc
+__pycache__/
+*.png
+*.jpg

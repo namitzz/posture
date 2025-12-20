@@ -9,6 +9,10 @@ from pose_detector import PoseDetector
 from squat_analyzer import SquatAnalyzer
 from audio_cues import AudioCueSystem
 from ai_coach import AICoach
+from ui.pose_overlay import PoseOverlay
+from ui.cue_display import CueDisplay
+from ui.set_summary_screen import SetSummaryScreen
+from ui.settings_screen import SettingsScreen
 
 
 class PostureApp:
@@ -33,6 +37,12 @@ class PostureApp:
         self.squat_analyzer = SquatAnalyzer()
         self.audio_system = AudioCueSystem()
         self.ai_coach = AICoach()
+        
+        # Initialize UI components
+        self.pose_overlay = PoseOverlay(show_overlay=True)
+        self.cue_display = CueDisplay(display_duration=1.5, enabled=True)
+        self.set_summary = SetSummaryScreen()
+        self.settings_screen = SettingsScreen()
         
         # State
         self.is_tracking = False
@@ -64,6 +74,7 @@ class PostureApp:
         print("  SPACE - Start/Stop tracking")
         print("  R - Reset rep counter")
         print("  P - Play AI coaching summary (after set)")
+        print("  S - Toggle settings screen")
         print("  Q - Quit")
         print("\nPosition yourself in front of the camera and press SPACE to start!\n")
         
@@ -79,15 +90,44 @@ class PostureApp:
                 # Detect pose
                 results, processed_frame = self.pose_detector.detect(frame)
                 
-                # Draw skeleton
-                frame = self.pose_detector.draw_landmarks(processed_frame, results)
+                # Determine form quality for overlay coloring
+                form_quality = 'neutral'
+                
+                # Draw skeleton with enhanced UI if enabled
+                if self.settings_screen.get_setting('show_skeleton'):
+                    frame = self.pose_overlay.draw_skeleton(
+                        processed_frame, self.pose_detector, results, form_quality
+                    )
+                else:
+                    frame = processed_frame
                 
                 # Analyze squat form if tracking
                 if self.is_tracking and results.pose_landmarks:
-                    self._process_frame(results, frame)
+                    analysis = self._process_frame(results, frame)
+                    
+                    # Update form quality for overlay
+                    if analysis and analysis.get('feedback'):
+                        form_quality = 'warning'
+                        # Add cues to display if enabled
+                        if self.settings_screen.get_setting('enable_audio_cues'):
+                            for feedback in analysis['feedback']:
+                                self.cue_display.add_cue(feedback, 'warning')
+                    elif self.is_tracking:
+                        form_quality = 'good'
+                
+                # Draw cue display
+                frame = self.cue_display.draw_cues(frame)
                 
                 # Draw UI overlay
                 self._draw_ui(frame)
+                
+                # Draw set summary if visible
+                if self.set_summary.is_visible:
+                    frame = self.set_summary.draw(frame)
+                
+                # Draw settings screen if visible
+                if self.settings_screen.is_visible:
+                    frame = self.settings_screen.draw(frame)
                 
                 # Display frame
                 cv2.imshow('Posture - Real-Time Form Correction', frame)
@@ -97,11 +137,25 @@ class PostureApp:
                 if key == ord('q'):
                     break
                 elif key == ord(' '):
-                    self._toggle_tracking()
+                    if self.set_summary.is_visible:
+                        self.set_summary.hide()
+                    elif not self.settings_screen.is_visible:
+                        self._toggle_tracking()
                 elif key == ord('r'):
                     self._reset_tracking()
                 elif key == ord('p'):
                     self._play_coaching_summary()
+                elif key == ord('s'):
+                    self.settings_screen.toggle_visibility()
+                elif self.settings_screen.is_visible:
+                    # Settings navigation
+                    if key == 82 or key == 0:  # Up arrow
+                        self.settings_screen.navigate_up()
+                    elif key == 84 or key == 1:  # Down arrow
+                        self.settings_screen.navigate_down()
+                    elif key == 13:  # Enter
+                        setting_key, value = self.settings_screen.toggle_selected()
+                        self._handle_setting_change(setting_key, value)
                 
                 self.frame_count += 1
         
@@ -123,19 +177,23 @@ class PostureApp:
         analysis = self.squat_analyzer.analyze_frame(landmarks_dict)
         
         if not analysis['valid_pose']:
-            return
+            return None
         
         # Check for rep completion
         if analysis['rep_count'] > self.last_rep_count:
-            self.audio_system.announce_rep(analysis['rep_count'])
+            if self.settings_screen.get_setting('enable_audio_cues'):
+                self.audio_system.announce_rep(analysis['rep_count'])
             self.last_rep_count = analysis['rep_count']
         
         # Play audio feedback (with cooldown built-in)
-        if analysis['feedback']:
+        if analysis['feedback'] and self.settings_screen.get_setting('enable_audio_cues'):
             self.audio_system.play_feedback(analysis['feedback'])
         
-        # Draw analysis info on frame
-        self._draw_analysis(frame, analysis)
+        # Draw analysis info on frame (debug mode)
+        if self.settings_screen.get_setting('debug_mode'):
+            self._draw_analysis(frame, analysis)
+        
+        return analysis
     
     def _draw_ui(self, frame):
         """Draw UI overlay on frame."""
@@ -155,10 +213,6 @@ class PostureApp:
             frame, rep_text, (10, 70),
             cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2
         )
-        
-        # Display AI coaching feedback if available
-        if self.last_coaching_feedback and self.show_coaching_feedback:
-            self._draw_coaching_feedback(frame)
         
         # Instructions
         if not self.is_tracking:
@@ -214,6 +268,8 @@ class PostureApp:
             print("\n▶ Started tracking")
             # Hide coaching feedback when starting new set
             self.show_coaching_feedback = False
+            self.set_summary.hide()
+            self.cue_display.clear_all()
         else:
             print("\n⏸ Paused tracking")
             
@@ -223,12 +279,14 @@ class PostureApp:
     
     def _reset_tracking(self):
         """Reset the tracking state."""
-        if self.squat_analyzer.rep_count > 0:
+        if self.squat_analyzer.rep_count > 0 and not self.set_summary.is_visible:
             self._generate_set_summary()
         
         self.squat_analyzer.reset()
         self.last_rep_count = 0
         self.show_coaching_feedback = False
+        self.set_summary.hide()
+        self.cue_display.clear_all()
         print("\n↺ Reset rep counter")
     
     def _generate_set_summary(self):
@@ -259,83 +317,47 @@ class PostureApp:
         
         # Get AI coaching
         print("\n🤖 AI COACH:")
-        self.audio_system.announce_set_complete(set_summary['total_reps'])
+        if self.settings_screen.get_setting('enable_audio_cues'):
+            self.audio_system.announce_set_complete(set_summary['total_reps'])
         
-        coaching = self.ai_coach.generate_set_summary(set_summary, rep_summaries_text)
+        if self.settings_screen.get_setting('enable_ai_coaching'):
+            coaching = self.ai_coach.generate_set_summary(set_summary, rep_summaries_text)
+        else:
+            coaching = "AI coaching is disabled in settings."
+        
         print(f"   {coaching}")
         print("="*50 + "\n")
         
         # Store for display and audio playback
         self.last_coaching_feedback = coaching
         self.show_coaching_feedback = True
-    
-    def _draw_coaching_feedback(self, frame):
-        """Draw AI coaching feedback on the frame."""
-        height, width = frame.shape[:2]
         
-        # Create semi-transparent overlay for feedback box
-        overlay = frame.copy()
-        
-        # Define feedback box dimensions
-        box_height = 150
-        box_width = width - 40
-        box_x = 20
-        box_y = height - box_height - 20
-        
-        # Draw rounded rectangle background
-        cv2.rectangle(overlay, (box_x, box_y), (box_x + box_width, box_y + box_height), 
-                     (50, 50, 50), -1)
-        
-        # Blend overlay with original frame
-        alpha = 0.8
-        cv2.addWeighted(overlay, alpha, frame, 1 - alpha, 0, frame)
-        
-        # Draw border
-        cv2.rectangle(frame, (box_x, box_y), (box_x + box_width, box_y + box_height), 
-                     (0, 255, 255), 2)
-        
-        # Draw title
-        cv2.putText(frame, "AI COACH FEEDBACK", (box_x + 10, box_y + 30),
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
-        
-        # Draw feedback text (word wrap for long text)
-        text = self.last_coaching_feedback
-        max_width = box_width - 20
-        words = text.split()
-        lines = []
-        current_line = []
-        
-        for word in words:
-            test_line = ' '.join(current_line + [word])
-            text_size = cv2.getTextSize(test_line, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)[0]
-            if text_size[0] <= max_width:
-                current_line.append(word)
-            else:
-                if current_line:
-                    lines.append(' '.join(current_line))
-                current_line = [word]
-        
-        if current_line:
-            lines.append(' '.join(current_line))
-        
-        # Draw each line
-        y_text = box_y + 60
-        for line in lines[:3]:  # Max 3 lines
-            cv2.putText(frame, line, (box_x + 10, y_text),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-            y_text += 25
-        
-        # Draw instruction
-        cv2.putText(frame, "Press 'P' to play audio", (box_x + 10, box_y + box_height - 10),
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.4, (200, 200, 200), 1)
+        # Show set summary screen with animation
+        self.set_summary.show(set_summary, coaching)
     
     def _play_coaching_summary(self):
         """Play the coaching summary via text-to-speech."""
         if self.last_coaching_feedback:
             print("▶ Playing coaching summary...")
-            self.audio_system.speak_coaching_summary(self.last_coaching_feedback)
+            if self.settings_screen.get_setting('enable_audio_cues'):
+                self.audio_system.speak_coaching_summary(self.last_coaching_feedback)
+            else:
+                print("Audio cues are disabled in settings.")
         else:
             print("No coaching feedback available to play.")
+    
+    def _handle_setting_change(self, setting_key, value):
+        """Handle changes to settings."""
+        if setting_key == 'show_skeleton':
+            self.pose_overlay.show_overlay = value
+            print(f"Skeleton overlay: {'ON' if value else 'OFF'}")
+        elif setting_key == 'enable_audio_cues':
+            self.cue_display.enabled = value
+            print(f"Audio cues: {'ON' if value else 'OFF'}")
+        elif setting_key == 'enable_ai_coaching':
+            print(f"AI coaching: {'ON' if value else 'OFF'}")
+        elif setting_key == 'debug_mode':
+            print(f"Debug mode: {'ON' if value else 'OFF'}")
 
 
 def main():
