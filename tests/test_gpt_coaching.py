@@ -6,7 +6,8 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from squat_analyzer import SquatAnalyzer
-from ai_coach import AICoach
+from ai_coach import AICoach, OPENAI_AVAILABLE
+import pytest
 
 
 class MockLandmark:
