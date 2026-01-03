@@ -2,11 +2,18 @@
 AI Coach using OpenAI GPT-4 for workout summaries and personalized feedback.
 """
 import os
-from openai import OpenAI
 from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
+
+# Try to import OpenAI, but make it optional
+try:
+    from openai import OpenAI
+    OPENAI_AVAILABLE = True
+except ImportError:
+    OPENAI_AVAILABLE = False
+    OpenAI = None
 
 
 class AICoach:
@@ -26,9 +33,15 @@ class AICoach:
         Args:
             api_key: OpenAI API key (defaults to environment variable)
         """
+        if not OPENAI_AVAILABLE:
+            print("Info: OpenAI package not installed. AI coaching will use rule-based fallback.")
+            self.client = None
+            self.api_key = None
+            return
+        
         self.api_key = api_key or os.getenv('OPENAI_API_KEY')
         if not self.api_key:
-            print("Warning: OPENAI_API_KEY not set. AI coaching will be disabled.")
+            print("Warning: OPENAI_API_KEY not set. AI coaching will use rule-based fallback.")
             self.client = None
         else:
             self.client = OpenAI(api_key=self.api_key)

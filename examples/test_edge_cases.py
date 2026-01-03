@@ -5,7 +5,7 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from ai_coach import AICoach
+from ai_coach import AICoach, OPENAI_AVAILABLE
 
 
 def test_edge_cases():
@@ -55,9 +55,16 @@ def test_edge_cases():
     }
     feedback = bad_coach.generate_set_summary(set_summary, "- Rep 1: Good rep")
     print(f"   Feedback: '{feedback}'")
-    expected_error = "Couldn't get feedback. Try again later."
-    assert feedback == expected_error, f"Expected '{expected_error}', got '{feedback}'"
-    print(f"   ✓ Correct! Returns: '{expected_error}'")
+    
+    if not OPENAI_AVAILABLE:
+        # When OpenAI is not installed, should use fallback
+        assert "Great work!" in feedback, f"Expected fallback feedback, got '{feedback}'"
+        print(f"   ✓ Correct! Returns fallback feedback when OpenAI unavailable")
+    else:
+        # When OpenAI is installed but key is invalid, should return error message
+        expected_error = "Couldn't get feedback. Try again later."
+        assert feedback == expected_error, f"Expected '{expected_error}', got '{feedback}'"
+        print(f"   ✓ Correct! Returns: '{expected_error}'")
     
     # Test 4: Null/empty response handling
     print("\n4. Testing null response handling:")
@@ -70,7 +77,10 @@ def test_edge_cases():
     
     print("\nEdge cases verified:")
     print("✓ <3 reps: Returns 'Do more reps to receive coaching'")
-    print("✓ API failure: Returns 'Couldn't get feedback. Try again later.'")
+    if not OPENAI_AVAILABLE:
+        print("✓ OpenAI unavailable: Returns rule-based fallback feedback")
+    else:
+        print("✓ API failure: Returns 'Couldn't get feedback. Try again later.'")
     print("✓ Null responses: Protected by try-except blocks")
     print("✓ Timeouts: Handled by OpenAI client default timeout")
 
