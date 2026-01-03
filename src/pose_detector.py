@@ -2,8 +2,24 @@
 Pose detection module using MediaPipe BlazePose.
 Detects 33-point skeleton from camera feed.
 """
-import cv2
-import mediapipe as mp
+import sys
+
+try:
+    import cv2
+except ImportError as e:
+    print("Error: OpenCV is not installed.")
+    print("Please install it with: pip install opencv-python")
+    print(f"Details: {e}")
+    sys.exit(1)
+
+try:
+    import mediapipe as mp
+except ImportError as e:
+    print("Error: MediaPipe is not installed.")
+    print("Please install it with: pip install mediapipe")
+    print(f"Details: {e}")
+    sys.exit(1)
+
 import numpy as np
 
 

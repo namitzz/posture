@@ -2,9 +2,19 @@
 Main application for Real-Time Gym Form Correction.
 Uses webcam to track squats and provide real-time feedback.
 """
-import cv2
 import sys
 import time
+
+# Try to import OpenCV (required for video capture)
+try:
+    import cv2
+except ImportError as e:
+    print("Error: OpenCV is not installed.")
+    print("Please install it with: pip install opencv-python")
+    print(f"Details: {e}")
+    sys.exit(1)
+
+# Import local modules
 from pose_detector import PoseDetector
 from squat_analyzer import SquatAnalyzer
 from audio_cues import AudioCueSystem
