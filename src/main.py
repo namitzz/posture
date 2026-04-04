@@ -102,14 +102,7 @@ class PostureApp:
                 
                 # Determine form quality for overlay coloring
                 form_quality = 'neutral'
-                
-                # Draw skeleton with enhanced UI if enabled
-                if self.settings_screen.get_setting('show_skeleton'):
-                    frame = self.pose_overlay.draw_skeleton(
-                        processed_frame, self.pose_detector, results, form_quality
-                    )
-                else:
-                    frame = processed_frame
+                frame = processed_frame
                 
                 # Analyze squat form if tracking
                 if self.is_tracking and results.pose_landmarks:
@@ -122,8 +115,14 @@ class PostureApp:
                         if self.settings_screen.get_setting('enable_audio_cues'):
                             for feedback in analysis['feedback']:
                                 self.cue_display.add_cue(feedback, 'warning')
-                    elif self.is_tracking:
+                    else:
                         form_quality = 'good'
+                
+                # Draw skeleton with enhanced UI if enabled
+                if self.settings_screen.get_setting('show_skeleton'):
+                    frame = self.pose_overlay.draw_skeleton(
+                        frame, self.pose_detector, results, form_quality
+                    )
                 
                 # Draw cue display
                 frame = self.cue_display.draw_cues(frame)
@@ -289,13 +288,15 @@ class PostureApp:
     
     def _reset_tracking(self):
         """Reset the tracking state."""
-        if self.squat_analyzer.rep_count > 0 and not self.set_summary.is_visible:
+        should_show_summary = self.squat_analyzer.rep_count > 0 and not self.set_summary.is_visible
+        if should_show_summary:
             self._generate_set_summary()
         
         self.squat_analyzer.reset()
         self.last_rep_count = 0
         self.show_coaching_feedback = False
-        self.set_summary.hide()
+        if not should_show_summary:
+            self.set_summary.hide()
         self.cue_display.clear_all()
         print("\n↺ Reset rep counter")
     
