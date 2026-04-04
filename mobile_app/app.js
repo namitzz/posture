@@ -1,4 +1,5 @@
-const { FilesetResolver, PoseLandmarker } = window;
+/* globals loaded by @mediapipe/tasks-vision CDN script */
+let FilesetResolver, PoseLandmarker;
 
 const video = document.getElementById('camera');
 const canvas = document.getElementById('overlay');
@@ -161,6 +162,14 @@ async function loop() {
 }
 
 async function initLandmarker() {
+  /* Resolve globals – the CDN may expose them directly or under a namespace */
+  if (!FilesetResolver) {
+    const ns = window.vision || window;
+    FilesetResolver = ns.FilesetResolver;
+    PoseLandmarker = ns.PoseLandmarker;
+  }
+  if (!FilesetResolver) throw new Error('MediaPipe tasks-vision failed to load');
+
   const vision = await FilesetResolver.forVisionTasks(
     'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12/wasm'
   );
@@ -202,9 +211,17 @@ function stop() {
   summaryEl.classList.remove('hidden');
 }
 
-startBtn.addEventListener('click', () => (running ? stop() : start()).catch((err) => {
-  statusEl.textContent = `Error: ${err.message}`;
-}));
+startBtn.addEventListener('click', async () => {
+  try {
+    if (running) {
+      stop();
+    } else {
+      await start();
+    }
+  } catch (err) {
+    statusEl.textContent = `Error: ${err.message}`;
+  }
+});
 
 resetBtn.addEventListener('click', () => {
   state = 'standing';
