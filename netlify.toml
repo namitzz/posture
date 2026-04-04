@@ -1,0 +1,7 @@
+[build]
+  publish = "mobile_app"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Cache-Control = "public, max-age=300"
