@@ -1,0 +1,7 @@
+{
+  "cleanUrls": true,
+  "trailingSlash": true,
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/mobile_app/$1" }
+  ]
+}
