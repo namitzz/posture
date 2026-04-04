@@ -3,14 +3,22 @@
   "short_name": "Posture",
   "start_url": ".",
   "display": "standalone",
+  "orientation": "portrait",
   "background_color": "#0b1220",
   "theme_color": "#0b1220",
   "description": "Real-time squat form coaching on your phone.",
   "icons": [
     {
-      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 128 128'><rect width='128' height='128' rx='24' fill='%230b1220'/><text x='64' y='78' text-anchor='middle' font-size='64' fill='%2345b5ff'>P</text></svg>",
-      "sizes": "128x128",
-      "type": "image/svg+xml"
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' rx='96' fill='%230b1220'/><text x='256' y='320' text-anchor='middle' font-size='256' fill='%2345b5ff'>P</text></svg>",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' fill='%230b1220'/><text x='256' y='320' text-anchor='middle' font-size='256' fill='%2345b5ff'>P</text></svg>",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
     }
   ]
 }
