@@ -21,9 +21,9 @@ class SquatAnalyzer:
     """
     
     # Configuration constants - can be customized per user
-    DESCENT_ANGLE = 140      # Start of descent
-    BOTTOM_ANGLE = 100       # Deep squat position
-    ASCENT_ANGLE = 140       # Rising back up
+    DESCENT_ANGLE = 175      # Start of descent
+    BOTTOM_ANGLE = 155       # Deep squat position
+    ASCENT_ANGLE = 160       # Rising back up
     GOOD_DEPTH_ANGLE = 90    # Parallel or below
     KNEE_VALGUS_THRESHOLD = 0.15  # Knees caving in (15% hip-width reduction)
     FORWARD_LEAN_THRESHOLD = 20   # Excessive forward lean
@@ -149,6 +149,7 @@ class SquatAnalyzer:
                 self.state = SquatState.BOTTOM
         
         elif self.state == SquatState.BOTTOM:
+            # Start ascent once angle opens back up from the bottom
             if knee_angle > self.ASCENT_ANGLE:
                 self.state = SquatState.ASCENDING
         
@@ -199,6 +200,8 @@ class SquatAnalyzer:
         )
         
         # If knees are significantly closer than hips, it's valgus
+        if hip_width <= 1e-6:
+            return False
         return (hip_width - knee_width) / hip_width > self.KNEE_VALGUS_THRESHOLD
     
     def _generate_rep_summary(self, rep_number, rep_data):
