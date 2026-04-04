@@ -1,13 +1,7 @@
 {
-  "version": 2,
   "cleanUrls": true,
   "trailingSlash": true,
-  "builds": [
-    { "src": "mobile_app/**/*", "use": "@vercel/static" }
-  ],
-  "routes": [
-    { "handle": "filesystem" },
-    { "src": "^/$", "dest": "/mobile_app/index.html" },
-    { "src": "^/(.*)$", "dest": "/mobile_app/$1" }
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/mobile_app/$1" }
   ]
 }
