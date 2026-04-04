@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#0b1220" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <title>Posture Coach Mobile</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app">
+      <header>
+        <h1>Posture Coach</h1>
+        <p>Real-time squat feedback on your phone.</p>
+      </header>
+
+      <section class="video-wrap">
+        <video id="camera" playsinline muted></video>
+        <canvas id="overlay"></canvas>
+      </section>
+
+      <section class="stats">
+        <div><span>Status</span><strong id="status">Idle</strong></div>
+        <div><span>Reps</span><strong id="reps">0</strong></div>
+        <div><span>State</span><strong id="phase">standing</strong></div>
+        <div><span>Knee angle</span><strong id="angle">--</strong></div>
+      </section>
+
+      <section class="controls">
+        <button id="startBtn">Start</button>
+        <button id="resetBtn" class="secondary">Reset</button>
+        <button id="audioBtn" class="secondary">Audio: On</button>
+      </section>
+
+      <section id="cue" class="cue hidden"></section>
+      <section id="summary" class="summary hidden"></section>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
