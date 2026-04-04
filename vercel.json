@@ -1,7 +1,7 @@
 {
+  "buildCommand": "",
+  "outputDirectory": "mobile_app",
+  "framework": null,
   "cleanUrls": true,
-  "trailingSlash": true,
-  "rewrites": [
-    { "source": "/(.*)", "destination": "/mobile_app/$1" }
-  ]
+  "trailingSlash": false
 }
