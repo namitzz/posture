@@ -4,6 +4,17 @@
 
 /* ---------- MediaPipe globals (resolved after CDN loads) ----- */
 let FilesetResolver, PoseLandmarker;
+const MEDIAPIPE_VERSION = '0.10.14';
+const MEDIAPIPE_CDN_TIMEOUT_MS = 8000;
+const MEDIAPIPE_MODEL_URLS = [
+  'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task',
+  'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task',
+];
+const MEDIAPIPE_BUNDLES = [
+  `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_VERSION}/vision_bundle.js`,
+  `https://unpkg.com/@mediapipe/tasks-vision@${MEDIAPIPE_VERSION}/vision_bundle.js`,
+  `https://fastly.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_VERSION}/vision_bundle.js`,
+];
 
 /* ---------- DOM refs ----------------------------------------- */
 const $ = (id) => document.getElementById(id);
@@ -216,25 +227,107 @@ function renderHistory() {
 /* ---------- MediaPipe init ----------------------------------- */
 
 async function initLandmarker() {
+  await ensureMediaPipeLoaded();
+
   if (!FilesetResolver) {
     const ns = window.vision || window;
     FilesetResolver = ns.FilesetResolver;
     PoseLandmarker = ns.PoseLandmarker;
   }
-  if (!FilesetResolver) throw new Error('MediaPipe failed to load');
+  if (!FilesetResolver || !PoseLandmarker) {
+    throw new Error('MediaPipe failed to load (missing vision bundle)');
+  }
 
   const vision = await FilesetResolver.forVisionTasks(
-    'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12/wasm'
+    `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_VERSION}/wasm`
   );
 
-  landmarker = await PoseLandmarker.createFromOptions(vision, {
-    baseOptions: {
-      modelAssetPath:
-        'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task',
-      delegate: 'GPU',
-    },
-    numPoses: 1,
-    runningMode: 'VIDEO',
+  landmarker = await createPoseLandmarkerWithFallback(vision);
+}
+
+async function createPoseLandmarkerWithFallback(vision) {
+  const delegates = ['GPU', 'CPU'];
+  const attempts = [];
+
+  for (const modelUrl of MEDIAPIPE_MODEL_URLS) {
+    for (const delegate of delegates) {
+      try {
+        console.info(`[MediaPipe] Creating landmarker with ${delegate} and model: ${modelUrl}`);
+        return await PoseLandmarker.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath: modelUrl,
+            delegate,
+          },
+          numPoses: 1,
+          runningMode: 'VIDEO',
+        });
+      } catch (err) {
+        const reason = err?.message || String(err);
+        attempts.push(`${delegate} @ ${modelUrl} -> ${reason}`);
+        console.warn(`[MediaPipe] Landmarker init failed with ${delegate}`, err);
+      }
+    }
+  }
+
+  throw new Error(
+    `MediaPipe landmarker initialization failed after fallbacks: ${attempts.join(' | ')}`
+  );
+}
+
+async function ensureMediaPipeLoaded() {
+  if ((window.vision && window.vision.FilesetResolver) || window.FilesetResolver) {
+    console.info('[MediaPipe] vision bundle already present on window object.');
+    return;
+  }
+
+  for (const src of MEDIAPIPE_BUNDLES) {
+    try {
+      console.info(`[MediaPipe] Attempting CDN load: ${src}`);
+      await loadScript(src, MEDIAPIPE_CDN_TIMEOUT_MS);
+      if ((window.vision && window.vision.FilesetResolver) || window.FilesetResolver) {
+        console.info(`[MediaPipe] Loaded successfully from: ${src}`);
+        return;
+      }
+    } catch (_err) {
+      console.warn(`[MediaPipe] Failed to load from: ${src}`, _err);
+    }
+  }
+
+  throw new Error('MediaPipe failed to load from CDN');
+}
+
+function loadScript(src, timeoutMs = 8000) {
+  return new Promise((resolve, reject) => {
+    const existing = document.querySelector(`script[data-mediapipe-src="${src}"]`);
+    if (existing) {
+      if (existing.dataset.loaded === 'true') {
+        resolve();
+      } else {
+        existing.addEventListener('load', () => resolve(), { once: true });
+        existing.addEventListener('error', () => reject(new Error(`Failed to load ${src}`)), { once: true });
+      }
+      return;
+    }
+
+    const timeoutId = setTimeout(
+      () => reject(new Error(`Timed out loading ${src} after ${timeoutMs}ms`)),
+      timeoutMs
+    );
+
+    const script = document.createElement('script');
+    script.src = src;
+    script.async = true;
+    script.dataset.mediapipeSrc = src;
+    script.addEventListener('load', () => {
+      clearTimeout(timeoutId);
+      script.dataset.loaded = 'true';
+      resolve();
+    }, { once: true });
+    script.addEventListener('error', () => {
+      clearTimeout(timeoutId);
+      reject(new Error(`Failed to load ${src}`));
+    }, { once: true });
+    document.head.appendChild(script);
   });
 }
 
