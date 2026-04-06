@@ -3,26 +3,6 @@ Main application for Real-Time Gym Form Correction.
 Uses webcam to track squats and provide real-time feedback.
 """
 import sys
-import time
-
-# Try to import OpenCV (required for video capture)
-try:
-    import cv2
-except ImportError as e:
-    print("Error: OpenCV is not installed.")
-    print("Please install it with: pip install opencv-python")
-    print(f"Details: {e}")
-    sys.exit(1)
-
-# Import local modules
-from pose_detector import PoseDetector
-from squat_analyzer import SquatAnalyzer
-from audio_cues import AudioCueSystem
-from ai_coach import AICoach
-from ui.pose_overlay import PoseOverlay
-from ui.cue_display import CueDisplay
-from ui.set_summary_screen import SetSummaryScreen
-from ui.settings_screen import SettingsScreen
 
 
 class PostureApp:
@@ -37,6 +17,26 @@ class PostureApp:
     def __init__(self):
         """Initialize the application."""
         print("Initializing Real-Time Gym Form Correction App...")
+
+        try:
+            from .pose_detector import PoseDetector
+            from .squat_analyzer import SquatAnalyzer
+            from .audio_cues import AudioCueSystem
+            from .ai_coach import AICoach
+            from .ui.pose_overlay import PoseOverlay
+            from .ui.cue_display import CueDisplay
+            from .ui.set_summary_screen import SetSummaryScreen
+            from .ui.settings_screen import SettingsScreen
+        except ImportError:
+            # Support running `python src/main.py` directly
+            from pose_detector import PoseDetector
+            from squat_analyzer import SquatAnalyzer
+            from audio_cues import AudioCueSystem
+            from ai_coach import AICoach
+            from ui.pose_overlay import PoseOverlay
+            from ui.cue_display import CueDisplay
+            from ui.set_summary_screen import SetSummaryScreen
+            from ui.settings_screen import SettingsScreen
         
         # Initialize components
         self.pose_detector = PoseDetector(
@@ -65,6 +65,14 @@ class PostureApp:
     
     def run(self):
         """Run the main application loop."""
+        try:
+            import cv2
+        except ImportError as e:
+            print("Error: OpenCV is not installed.")
+            print("Please install it with: pip install opencv-python")
+            print(f"Details: {e}")
+            return
+
         # Open webcam
         cap = cv2.VideoCapture(0)
         
