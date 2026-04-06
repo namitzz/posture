@@ -19,13 +19,40 @@
   </head>
   <body>
 
+    <!-- ====== ONBOARDING ====== -->
+    <div id="onboarding" class="onboarding hidden">
+      <div class="onboarding-page active" data-page="0">
+        <div class="onboarding-illustration">
+          <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5" stroke-linecap="round"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
+        </div>
+        <h2>Camera Tracking</h2>
+        <p>postur uses your camera and AI to track your body in real-time. No video is recorded or uploaded.</p>
+      </div>
+      <div class="onboarding-page" data-page="1">
+        <div class="onboarding-illustration">
+          <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5" stroke-linecap="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+        </div>
+        <h2>Real-time Feedback</h2>
+        <p>Get instant voice and visual cues for depth, knee tracking, and posture. Every rep is scored 0-100.</p>
+      </div>
+      <div class="onboarding-page" data-page="2">
+        <div class="onboarding-illustration">
+          <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5" stroke-linecap="round"><path d="M12 20V10M18 20V4M6 20v-4"/></svg>
+        </div>
+        <h2>Track Progress</h2>
+        <p>Build streaks, beat personal records, and watch your form improve over time.</p>
+      </div>
+      <div class="onboarding-dots">
+        <span class="dot active"></span><span class="dot"></span><span class="dot"></span>
+      </div>
+      <button id="onboardingNext" class="btn-primary">Next</button>
+    </div>
+
     <!-- ====== SPLASH SCREEN ====== -->
     <div id="splash" class="splash">
       <div class="splash-inner">
         <svg class="splash-logo" viewBox="0 0 280 80" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <!-- postur wordmark -->
           <text x="0" y="68" font-family="Inter, system-ui, sans-serif" font-weight="800" font-size="72" fill="white" letter-spacing="-3">pos</text>
-          <!-- t with weightlifter -->
           <g class="lifter" transform="translate(148, 0)">
             <circle cx="12" cy="8" r="6" fill="white"/>
             <line x1="-22" y1="20" x2="46" y2="20" stroke="white" stroke-width="4" stroke-linecap="round"/>
@@ -37,11 +64,17 @@
           <text x="172" y="68" font-family="Inter, system-ui, sans-serif" font-weight="800" font-size="72" fill="white" letter-spacing="-3">ur</text>
         </svg>
         <p class="splash-tagline">AI Form Coach</p>
-        <div class="splash-loader">
-          <div class="splash-loader-bar"></div>
-        </div>
+        <div class="splash-loader"><div class="splash-loader-bar"></div></div>
       </div>
     </div>
+
+    <!-- ====== COUNTDOWN OVERLAY ====== -->
+    <div id="countdown" class="countdown hidden">
+      <span id="countdownNum">3</span>
+    </div>
+
+    <!-- ====== CONFETTI CANVAS ====== -->
+    <canvas id="confetti" class="confetti-canvas hidden"></canvas>
 
     <!-- ====== MAIN APP ====== -->
     <div id="app" class="app hidden">
@@ -61,6 +94,13 @@
           <text x="86" y="34" font-family="Inter, system-ui, sans-serif" font-weight="800" font-size="36" fill="white" letter-spacing="-1.5">ur</text>
         </svg>
         <div class="topbar-actions">
+          <button id="streakBtn" class="streak-badge" aria-label="Streak">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="#f97316"><path d="M12 2c.5 3.5 4 6 4 10a4 4 0 11-8 0c0-4 3.5-6.5 4-10z"/></svg>
+            <span id="streakCount">0</span>
+          </button>
+          <button id="recordsBtn" class="icon-btn" aria-label="Records">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 15l-2 5l9-11h-5l2-5l-9 11h5z"/></svg>
+          </button>
           <button id="historyBtn" class="icon-btn" aria-label="History">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
           </button>
@@ -76,7 +116,7 @@
           <video id="camera" playsinline muted></video>
           <canvas id="overlay"></canvas>
 
-          <!-- Overlay HUD -->
+          <!-- HUD overlays -->
           <div class="hud-top">
             <div class="hud-pill" id="hudStatus">
               <span class="hud-dot"></span>
@@ -85,17 +125,24 @@
             <div class="hud-pill hud-timer" id="hudTimer">00:00</div>
           </div>
 
-          <!-- Live cue overlay -->
-          <div id="cueOverlay" class="cue-overlay hidden">
-            <span id="cueText"></span>
+          <!-- Tempo bar (bottom-left) -->
+          <div class="hud-tempo hidden" id="hudTempo">
+            <span class="tempo-label">Tempo</span>
+            <span class="tempo-value" id="tempoValue">--</span>
           </div>
+
+          <!-- Camera flip (bottom-left during workout) -->
+          <button id="camFlipBtn" class="hud-flip-btn hidden" aria-label="Flip camera">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round"><path d="M20 16V7a2 2 0 00-2-2H6"/><path d="M4 8v9a2 2 0 002 2h12"/><polyline points="15 3 20 7 15 11"/><polyline points="9 21 4 17 9 13"/></svg>
+          </button>
+
+          <!-- Live cue overlay -->
+          <div id="cueOverlay" class="cue-overlay hidden"><span id="cueText"></span></div>
 
           <!-- Rep flash -->
-          <div id="repFlash" class="rep-flash hidden">
-            <span id="repFlashNum"></span>
-          </div>
+          <div id="repFlash" class="rep-flash hidden"><span id="repFlashNum"></span></div>
 
-          <!-- Score ring (bottom-right of camera) -->
+          <!-- Score ring -->
           <div class="hud-score" id="hudScore">
             <svg viewBox="0 0 60 60">
               <circle cx="30" cy="30" r="26" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="4"/>
@@ -112,7 +159,7 @@
         </div>
       </section>
 
-      <!-- Live stats strip -->
+      <!-- Stats strip -->
       <section class="stats-strip">
         <div class="stat-card stat-reps">
           <span class="stat-label">Reps</span>
@@ -132,15 +179,15 @@
         </div>
       </section>
 
-      <!-- Primary controls -->
-      <section class="controls">
+      <!-- Primary start -->
+      <section class="controls" id="controlsSection">
         <button id="startBtn" class="btn-primary">
           <svg class="btn-icon" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
           <span>Start Workout</span>
         </button>
       </section>
 
-      <!-- Secondary controls (visible during workout) -->
+      <!-- Workout controls -->
       <section id="workoutControls" class="workout-controls hidden">
         <button id="pauseBtn" class="btn-secondary">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
@@ -150,23 +197,51 @@
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
           Finish Set
         </button>
-        <button id="audioToggle" class="btn-secondary">
-          <svg id="audioIcon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 010 7.07" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M19.07 4.93a10 10 0 010 14.14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <button id="audioToggle" class="btn-secondary btn-square">
+          <svg id="audioIcon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 010 7.07" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
         </button>
       </section>
 
-      <!-- Set summary (shown after finishing) -->
+      <!-- Rest timer (between sets) -->
+      <section id="restTimer" class="rest-timer hidden">
+        <div class="rest-timer-ring">
+          <svg viewBox="0 0 120 120">
+            <circle cx="60" cy="60" r="52" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="6"/>
+            <circle id="restRing" cx="60" cy="60" r="52" fill="none" stroke="white" stroke-width="6" stroke-linecap="round" stroke-dasharray="326.73" stroke-dashoffset="0" transform="rotate(-90 60 60)"/>
+          </svg>
+          <div class="rest-timer-inner">
+            <span class="rest-label">Rest</span>
+            <span class="rest-time" id="restTime">60</span>
+            <span class="rest-unit">sec</span>
+          </div>
+        </div>
+        <div class="rest-actions">
+          <button id="skipRest" class="btn-secondary">Skip</button>
+          <button id="addRest" class="btn-secondary">+30s</button>
+        </div>
+      </section>
+
+      <!-- Set summary -->
       <section id="summary" class="summary-card hidden">
         <div class="summary-header">
           <h2>Set Complete</h2>
           <div class="summary-grade" id="summaryGrade">A</div>
         </div>
+        <div id="pbBanner" class="pb-banner hidden">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="#f97316"><path d="M12 2c.5 3.5 4 6 4 10a4 4 0 11-8 0c0-4 3.5-6.5 4-10z"/></svg>
+          <span id="pbText">New Personal Best!</span>
+        </div>
         <div class="summary-stats" id="summaryStats"></div>
+        <div class="summary-tempo" id="summaryTempo"></div>
         <div class="summary-reps" id="summaryReps"></div>
         <div class="summary-actions">
+          <button id="shareBtn" class="btn-secondary btn-full">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+            Share Results
+          </button>
           <button id="newSetBtn" class="btn-primary">
             <svg class="btn-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
-            <span>New Set</span>
+            <span>Next Set</span>
           </button>
         </div>
       </section>
@@ -182,6 +257,70 @@
       </div>
       <div class="panel-body" id="historyList">
         <p class="empty-state">No workouts yet. Start your first set!</p>
+      </div>
+    </div>
+
+    <!-- ====== RECORDS PANEL ====== -->
+    <div id="recordsPanel" class="panel hidden">
+      <div class="panel-header">
+        <h2>Personal Records</h2>
+        <button id="closeRecords" class="icon-btn" aria-label="Close">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="panel-body" id="recordsBody"></div>
+    </div>
+
+    <!-- ====== FORM GUIDE PANEL ====== -->
+    <div id="guidePanel" class="panel hidden">
+      <div class="panel-header">
+        <h2>Squat Form Guide</h2>
+        <button id="closeGuide" class="icon-btn" aria-label="Close">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="panel-body">
+        <div class="guide-section">
+          <h3>Setup</h3>
+          <ul>
+            <li>Feet shoulder-width apart, toes slightly out</li>
+            <li>Place your phone 2-3m away, full body visible</li>
+            <li>Use rear camera for best tracking</li>
+          </ul>
+        </div>
+        <div class="guide-section">
+          <h3>Descent</h3>
+          <ul>
+            <li>Push hips back first, then bend knees</li>
+            <li>Keep weight on midfoot/heels</li>
+            <li>Track knees over toes — don't let them cave in</li>
+          </ul>
+        </div>
+        <div class="guide-section">
+          <h3>Bottom Position</h3>
+          <ul>
+            <li>Hip crease should reach knee level (parallel)</li>
+            <li>Target depth: ~90° knee angle</li>
+            <li>Maintain neutral spine — chest up</li>
+          </ul>
+        </div>
+        <div class="guide-section">
+          <h3>Ascent</h3>
+          <ul>
+            <li>Drive through your heels</li>
+            <li>Keep knees pushed out</li>
+            <li>Stand tall, squeeze glutes at the top</li>
+          </ul>
+        </div>
+        <div class="guide-section">
+          <h3>Common Mistakes</h3>
+          <ul>
+            <li><strong>Knee valgus</strong> — knees caving inward</li>
+            <li><strong>Forward lean</strong> — chest dropping too far</li>
+            <li><strong>Shallow depth</strong> — not hitting parallel</li>
+            <li><strong>Butt wink</strong> — pelvis tucking under at bottom</li>
+          </ul>
+        </div>
       </div>
     </div>
 
@@ -202,7 +341,7 @@
           </label>
         </div>
         <div class="setting-group">
-          <h3>Audio</h3>
+          <h3>Audio &amp; Feedback</h3>
           <label class="setting-row">
             <span>Voice cues</span>
             <input type="checkbox" id="setVoice" class="toggle" checked />
@@ -211,22 +350,43 @@
             <span>Haptic feedback</span>
             <input type="checkbox" id="setHaptic" class="toggle" checked />
           </label>
+          <label class="setting-row">
+            <span>Countdown before start</span>
+            <input type="checkbox" id="setCountdown" class="toggle" checked />
+          </label>
         </div>
         <div class="setting-group">
-          <h3>Thresholds</h3>
+          <h3>Workout</h3>
           <label class="setting-row">
             <span>Target depth (degrees)</span>
             <input type="number" id="setDepth" class="setting-input" value="90" min="60" max="120" />
           </label>
+          <label class="setting-row">
+            <span>Rest timer (seconds)</span>
+            <input type="number" id="setRest" class="setting-input" value="60" min="10" max="300" step="10" />
+          </label>
+        </div>
+        <div class="setting-group">
+          <h3>Data</h3>
+          <label class="setting-row">
+            <span>Clear all history</span>
+            <button id="clearDataBtn" class="btn-danger-sm">Clear</button>
+          </label>
+        </div>
+        <div class="setting-group">
+          <h3>Help</h3>
+          <label class="setting-row" id="openGuide">
+            <span>Squat form guide</span>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+          </label>
         </div>
         <div class="setting-group">
           <h3>About</h3>
-          <p class="setting-about">postur v1.0 — AI-powered squat form coach.<br/>Uses MediaPipe Pose for real-time tracking.</p>
+          <p class="setting-about">postur v2.0 — AI-powered squat form coach.<br/>Uses MediaPipe Pose for on-device tracking.<br/>No data leaves your phone.</p>
         </div>
       </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12"></script>
-    <script src="app.js"></script>
+    <script type="module" src="app.js"></script>
   </body>
 </html>
