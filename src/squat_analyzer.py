@@ -3,7 +3,10 @@ Squat analyzer with state machine for rep counting and form analysis.
 Provides real-time feedback on squat form.
 """
 from enum import Enum
-from utils import calculate_angle, calculate_distance
+try:
+    from .utils import calculate_angle, calculate_distance
+except ImportError:
+    from utils import calculate_angle, calculate_distance
 
 
 class SquatState(Enum):
