@@ -4,6 +4,10 @@
 
 /* ---------- MediaPipe globals (resolved after CDN loads) ----- */
 let FilesetResolver, PoseLandmarker;
+const MEDIAPIPE_BUNDLES = [
+  'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12/vision_bundle.js',
+  'https://unpkg.com/@mediapipe/tasks-vision@0.10.12/vision_bundle.js',
+];
 
 /* ---------- DOM refs ----------------------------------------- */
 const $ = (id) => document.getElementById(id);
@@ -216,12 +220,16 @@ function renderHistory() {
 /* ---------- MediaPipe init ----------------------------------- */
 
 async function initLandmarker() {
+  await ensureMediaPipeLoaded();
+
   if (!FilesetResolver) {
     const ns = window.vision || window;
     FilesetResolver = ns.FilesetResolver;
     PoseLandmarker = ns.PoseLandmarker;
   }
-  if (!FilesetResolver) throw new Error('MediaPipe failed to load');
+  if (!FilesetResolver || !PoseLandmarker) {
+    throw new Error('MediaPipe failed to load (missing vision bundle)');
+  }
 
   const vision = await FilesetResolver.forVisionTasks(
     'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12/wasm'
@@ -235,6 +243,51 @@ async function initLandmarker() {
     },
     numPoses: 1,
     runningMode: 'VIDEO',
+  });
+}
+
+async function ensureMediaPipeLoaded() {
+  if ((window.vision && window.vision.FilesetResolver) || window.FilesetResolver) {
+    return;
+  }
+
+  for (const src of MEDIAPIPE_BUNDLES) {
+    try {
+      await loadScript(src);
+      if ((window.vision && window.vision.FilesetResolver) || window.FilesetResolver) {
+        return;
+      }
+    } catch (_err) {
+      // Try next CDN URL.
+    }
+  }
+
+  throw new Error('MediaPipe failed to load from CDN');
+}
+
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const existing = document.querySelector(`script[data-mediapipe-src="${src}"]`);
+    if (existing) {
+      if (existing.dataset.loaded === 'true') {
+        resolve();
+      } else {
+        existing.addEventListener('load', () => resolve(), { once: true });
+        existing.addEventListener('error', () => reject(new Error(`Failed to load ${src}`)), { once: true });
+      }
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = src;
+    script.async = true;
+    script.dataset.mediapipeSrc = src;
+    script.addEventListener('load', () => {
+      script.dataset.loaded = 'true';
+      resolve();
+    }, { once: true });
+    script.addEventListener('error', () => reject(new Error(`Failed to load ${src}`)), { once: true });
+    document.head.appendChild(script);
   });
 }
 
