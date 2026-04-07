@@ -234,15 +234,62 @@ async function initLandmarker() {
   const vision = await FilesetResolver.forVisionTasks(
     `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_VERSION}/wasm`
   );
+}
 
-  landmarker = await PoseLandmarker.createFromOptions(vision, {
-    baseOptions: {
-      modelAssetPath:
-        'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task',
-      delegate: 'GPU',
-    },
-    numPoses: 1,
-    runningMode: 'VIDEO',
+async function ensureMediaPipeLoaded() {
+  if ((window.vision && window.vision.FilesetResolver) || window.FilesetResolver) {
+    console.info('[MediaPipe] vision bundle already present on window object.');
+    return;
+  }
+
+  for (const src of MEDIAPIPE_BUNDLES) {
+    try {
+      console.info(`[MediaPipe] Attempting CDN load: ${src}`);
+      await loadScript(src, MEDIAPIPE_CDN_TIMEOUT_MS);
+      if ((window.vision && window.vision.FilesetResolver) || window.FilesetResolver) {
+        console.info(`[MediaPipe] Loaded successfully from: ${src}`);
+        return;
+      }
+    } catch (_err) {
+      console.warn(`[MediaPipe] Failed to load from: ${src}`, _err);
+    }
+  }
+
+  throw new Error('MediaPipe failed to load from CDN');
+}
+
+function loadScript(src, timeoutMs = 8000) {
+  return new Promise((resolve, reject) => {
+    const existing = document.querySelector(`script[data-mediapipe-src="${src}"]`);
+    if (existing) {
+      if (existing.dataset.loaded === 'true') {
+        resolve();
+      } else {
+        existing.addEventListener('load', () => resolve(), { once: true });
+        existing.addEventListener('error', () => reject(new Error(`Failed to load ${src}`)), { once: true });
+      }
+      return;
+    }
+
+    const timeoutId = setTimeout(
+      () => reject(new Error(`Timed out loading ${src} after ${timeoutMs}ms`)),
+      timeoutMs
+    );
+
+    const script = document.createElement('script');
+    script.src = src;
+    script.async = true;
+    script.dataset.mediapipeSrc = src;
+    script.addEventListener('load', () => {
+      clearTimeout(timeoutId);
+      script.dataset.loaded = 'true';
+      resolve();
+    }, { once: true });
+    script.addEventListener('error', () => {
+      clearTimeout(timeoutId);
+      reject(new Error(`Failed to load ${src}`));
+    }, { once: true });
+    document.head.appendChild(script);
   });
 }
 
