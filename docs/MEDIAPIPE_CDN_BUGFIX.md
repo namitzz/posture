@@ -76,12 +76,6 @@ The loader iterates through each until one succeeds.
 
 This improves first-load behavior even before fallback logic runs.
 
-### 7) Added runtime backend fallback to legacy MediaPipe Pose
-
-If Tasks Vision initialization fails (bundle, WASM, model, or delegate/device issues), the app now
-falls back to `@mediapipe/pose` legacy JS runtime so users can still start workouts instead of
-hard failing at startup.
-
 ## Validation Checklist
 
 - JavaScript syntax check:
