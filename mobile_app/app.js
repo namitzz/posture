@@ -4,6 +4,22 @@
 
 /* ---------- MediaPipe globals (resolved after CDN loads) ----- */
 let FilesetResolver, PoseLandmarker;
+let legacyPose = null;
+let legacyPoseResults = null;
+let useLegacyPoseFallback = false;
+const MEDIAPIPE_VERSION = '0.10.14';
+const MEDIAPIPE_CDN_TIMEOUT_MS = 8000;
+const MEDIAPIPE_LEGACY_VERSION = '0.5.1675469404';
+const MEDIAPIPE_MODEL_URLS = [
+  'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task',
+  'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task',
+];
+const MEDIAPIPE_BUNDLES = [
+  `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_VERSION}/vision_bundle.js`,
+  `https://unpkg.com/@mediapipe/tasks-vision@${MEDIAPIPE_VERSION}/vision_bundle.js`,
+  `https://fastly.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_VERSION}/vision_bundle.js`,
+];
+const MEDIAPIPE_LEGACY_SCRIPT = `https://cdn.jsdelivr.net/npm/@mediapipe/pose@${MEDIAPIPE_LEGACY_VERSION}/pose.js`;
 
 /* ---------- DOM refs ----------------------------------------- */
 const $ = (id) => document.getElementById(id);
@@ -216,25 +232,145 @@ function renderHistory() {
 /* ---------- MediaPipe init ----------------------------------- */
 
 async function initLandmarker() {
-  if (!FilesetResolver) {
-    const ns = window.vision || window;
-    FilesetResolver = ns.FilesetResolver;
-    PoseLandmarker = ns.PoseLandmarker;
+  useLegacyPoseFallback = false;
+  legacyPose = null;
+  legacyPoseResults = null;
+
+  try {
+    await ensureMediaPipeLoaded();
+
+    if (!FilesetResolver) {
+      const ns = window.vision || window;
+      FilesetResolver = ns.FilesetResolver;
+      PoseLandmarker = ns.PoseLandmarker;
+    }
+    if (!FilesetResolver || !PoseLandmarker) {
+      throw new Error('MediaPipe failed to load (missing vision bundle)');
+    }
+
+    const vision = await FilesetResolver.forVisionTasks(
+      `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_VERSION}/wasm`
+    );
+
+    landmarker = await createPoseLandmarkerWithFallback(vision);
+    console.info('[MediaPipe] Using Tasks Vision PoseLandmarker backend.');
+  } catch (tasksErr) {
+    console.warn('[MediaPipe] Tasks Vision failed, attempting legacy Pose fallback.', tasksErr);
+    await initLegacyPoseFallback(tasksErr);
   }
-  if (!FilesetResolver) throw new Error('MediaPipe failed to load');
+}
 
-  const vision = await FilesetResolver.forVisionTasks(
-    'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12/wasm'
+async function createPoseLandmarkerWithFallback(vision) {
+  const delegates = ['GPU', 'CPU'];
+  const attempts = [];
+
+  for (const modelUrl of MEDIAPIPE_MODEL_URLS) {
+    for (const delegate of delegates) {
+      try {
+        console.info(`[MediaPipe] Creating landmarker with ${delegate} and model: ${modelUrl}`);
+        return await PoseLandmarker.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath: modelUrl,
+            delegate,
+          },
+          numPoses: 1,
+          runningMode: 'VIDEO',
+        });
+      } catch (err) {
+        const reason = err?.message || String(err);
+        attempts.push(`${delegate} @ ${modelUrl} -> ${reason}`);
+        console.warn(`[MediaPipe] Landmarker init failed with ${delegate}`, err);
+      }
+    }
+  }
+
+  throw new Error(
+    `MediaPipe landmarker initialization failed after fallbacks: ${attempts.join(' | ')}`
   );
+}
 
-  landmarker = await PoseLandmarker.createFromOptions(vision, {
-    baseOptions: {
-      modelAssetPath:
-        'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task',
-      delegate: 'GPU',
-    },
-    numPoses: 1,
-    runningMode: 'VIDEO',
+async function ensureMediaPipeLoaded() {
+  if ((window.vision && window.vision.FilesetResolver) || window.FilesetResolver) {
+    console.info('[MediaPipe] vision bundle already present on window object.');
+    return;
+  }
+
+  for (const src of MEDIAPIPE_BUNDLES) {
+    try {
+      console.info(`[MediaPipe] Attempting CDN load: ${src}`);
+      await loadScript(src, MEDIAPIPE_CDN_TIMEOUT_MS);
+      if ((window.vision && window.vision.FilesetResolver) || window.FilesetResolver) {
+        console.info(`[MediaPipe] Loaded successfully from: ${src}`);
+        return;
+      }
+    } catch (_err) {
+      console.warn(`[MediaPipe] Failed to load from: ${src}`, _err);
+    }
+  }
+
+  throw new Error('MediaPipe failed to load from CDN');
+}
+
+async function initLegacyPoseFallback(rootCauseError) {
+  await loadScript(MEDIAPIPE_LEGACY_SCRIPT, MEDIAPIPE_CDN_TIMEOUT_MS);
+  const Pose = window.Pose;
+  if (!Pose) {
+    throw new Error(`Legacy MediaPipe Pose failed to load. Root cause: ${rootCauseError?.message || rootCauseError}`);
+  }
+
+  legacyPose = new Pose({
+    locateFile: (file) =>
+      `https://cdn.jsdelivr.net/npm/@mediapipe/pose@${MEDIAPIPE_LEGACY_VERSION}/${file}`,
+  });
+
+  legacyPose.setOptions({
+    modelComplexity: 1,
+    smoothLandmarks: true,
+    enableSegmentation: false,
+    minDetectionConfidence: 0.5,
+    minTrackingConfidence: 0.5,
+  });
+  legacyPose.onResults((results) => {
+    legacyPoseResults = results;
+  });
+
+  useLegacyPoseFallback = true;
+  landmarker = null;
+  console.info('[MediaPipe] Using legacy @mediapipe/pose fallback backend.');
+}
+
+function loadScript(src, timeoutMs = 8000) {
+  return new Promise((resolve, reject) => {
+    const existing = document.querySelector(`script[data-mediapipe-src="${src}"]`);
+    if (existing) {
+      if (existing.dataset.loaded === 'true') {
+        resolve();
+      } else {
+        existing.addEventListener('load', () => resolve(), { once: true });
+        existing.addEventListener('error', () => reject(new Error(`Failed to load ${src}`)), { once: true });
+      }
+      return;
+    }
+
+    const timeoutId = setTimeout(
+      () => reject(new Error(`Timed out loading ${src} after ${timeoutMs}ms`)),
+      timeoutMs
+    );
+
+    const script = document.createElement('script');
+    script.src = src;
+    script.async = true;
+    script.dataset.mediapipeSrc = src;
+    script.addEventListener('load', () => {
+      clearTimeout(timeoutId);
+      script.dataset.loaded = 'true';
+      resolve();
+    }, { once: true });
+    script.addEventListener('error', () => {
+      clearTimeout(timeoutId);
+      reject(new Error(`Failed to load ${src}`));
+    }, { once: true });
+    document.head.appendChild(script);
   });
 }
 
@@ -460,8 +596,15 @@ async function loop() {
 
   let result;
   try {
-    result = landmarker.detectForVideo(video, performance.now());
-  } catch {
+    if (useLegacyPoseFallback && legacyPose) {
+      await legacyPose.send({ image: video });
+      const legacyLandmarks = legacyPoseResults?.poseLandmarks || null;
+      result = legacyLandmarks ? { landmarks: [legacyLandmarks] } : null;
+    } else {
+      result = landmarker.detectForVideo(video, performance.now());
+    }
+  } catch (err) {
+    console.warn('[MediaPipe] Detection step failed.', err);
     requestAnimationFrame(loop);
     return;
   }
@@ -521,7 +664,7 @@ async function startWorkout() {
   startBtn.disabled = true;
 
   try {
-    if (!landmarker) await initLandmarker();
+    if (!landmarker && !useLegacyPoseFallback) await initLandmarker();
     await startCamera();
   } catch (err) {
     startBtn.querySelector('span').textContent = 'Start Workout';
