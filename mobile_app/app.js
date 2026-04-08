@@ -560,8 +560,15 @@ async function loop() {
 
   let result;
   try {
-    result = landmarker.detectForVideo(video, performance.now());
-  } catch {
+    if (useLegacyPoseFallback && legacyPose) {
+      await legacyPose.send({ image: video });
+      const legacyLandmarks = legacyPoseResults?.poseLandmarks || null;
+      result = legacyLandmarks ? { landmarks: [legacyLandmarks] } : null;
+    } else {
+      result = landmarker.detectForVideo(video, performance.now());
+    }
+  } catch (err) {
+    console.warn('[MediaPipe] Detection step failed.', err);
     requestAnimationFrame(loop);
     return;
   }
@@ -621,7 +628,7 @@ async function startWorkout() {
   startBtn.disabled = true;
 
   try {
-    if (!landmarker) await initLandmarker();
+    if (!landmarker && !useLegacyPoseFallback) await initLandmarker();
     await startCamera();
   } catch (err) {
     startBtn.querySelector('span').textContent = 'Start Workout';
