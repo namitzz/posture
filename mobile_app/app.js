@@ -46,6 +46,7 @@ const angleEl       = $('angle');
 const depthCard     = document.querySelector('.stat-depth');
 
 const startBtn      = $('startBtn');
+const startNoCameraBtn = $('startNoCameraBtn');
 const workoutCtrl   = $('workoutControls');
 const pauseBtn      = $('pauseBtn');
 const finishBtn     = $('finishBtn');
@@ -108,6 +109,7 @@ let landmarker    = null;
 let stream        = null;
 let running       = false;
 let paused        = false;
+let noCameraMode  = false;
 let audioEnabled  = true;
 let phase         = 'standing';   // standing | descending | bottom | ascending
 let repCount      = 0;
@@ -622,6 +624,8 @@ function stopCameraStream() {
 async function startWorkout() {
   startBtn.querySelector('span').textContent = 'Initializing AI coach...';
   startBtn.disabled = true;
+  startNoCameraBtn.disabled = true;
+  noCameraMode = skipCamera;
 
   try {
     if (!landmarker) await initLandmarker();
@@ -655,6 +659,7 @@ async function startWorkout() {
   depthCard.className = 'stat-card stat-depth';
 
   startBtn.classList.add('hidden');
+  startNoCameraBtn.classList.add('hidden');
   workoutCtrl.classList.remove('hidden');
   manualRepBtn.classList.toggle('hidden', !manualMode);
   summaryEl.classList.add('hidden');
@@ -687,7 +692,7 @@ function pauseWorkout() {
   } else {
     pauseBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> Pause';
     startTimer();
-    loop();
+    if (!noCameraMode) loop();
   }
 }
 
@@ -706,8 +711,10 @@ function finishWorkout() {
 
   if (setData.length === 0) {
     startBtn.classList.remove('hidden');
+    startNoCameraBtn.classList.remove('hidden');
     startBtn.querySelector('span').textContent = 'Start Workout';
     startBtn.disabled = false;
+    startNoCameraBtn.disabled = false;
     return;
   }
 
@@ -777,8 +784,11 @@ function finishWorkout() {
 function resetForNewSet() {
   summaryEl.classList.add('hidden');
   startBtn.classList.remove('hidden');
+  startNoCameraBtn.classList.remove('hidden');
   startBtn.querySelector('span').textContent = 'Start Workout';
   startBtn.disabled = false;
+  startNoCameraBtn.disabled = false;
+  noCameraMode = false;
 
   repsEl.textContent = '0';
   depthEl.textContent = '--';
@@ -795,12 +805,33 @@ function resetForNewSet() {
   manualMode = false;
 }
 
+function addManualRep() {
+  if (!running || paused || !noCameraMode) return;
+  repCount += 1;
+  const repScore = 85;
+  setData.push({
+    minAngle: settings.depthTarget,
+    hadValgus: false,
+    hadLean: false,
+    score: repScore,
+    depthLabel: 'manual',
+  });
+  repsEl.textContent = repCount;
+  phaseEl.textContent = 'manual';
+  angleEl.textContent = '--';
+  showRepFlash(repCount);
+  haptic(30);
+  updateScoreRing(repScore);
+}
+
 /* ---------- Event listeners ---------------------------------- */
 
-startBtn.addEventListener('click', startWorkout);
+startBtn.addEventListener('click', () => startWorkout());
+startNoCameraBtn.addEventListener('click', () => startWorkout({ skipCamera: true }));
 pauseBtn.addEventListener('click', pauseWorkout);
 finishBtn.addEventListener('click', finishWorkout);
 newSetBtn.addEventListener('click', resetForNewSet);
+manualRepBtn.addEventListener('click', addManualRep);
 
 audioToggle.addEventListener('click', () => {
   audioEnabled = !audioEnabled;

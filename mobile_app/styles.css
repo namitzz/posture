@@ -409,6 +409,11 @@ html, body {
   flex-shrink: 0;
 }
 
+.start-alt {
+  width: 100%;
+  margin-top: 10px;
+}
+
 .btn-primary {
   width: 100%;
   display: flex;
