@@ -589,6 +589,8 @@ function startTimer() {
   stopTimer();
   timerInterval = setInterval(() => {
     updateTimerUI();
+  timerInterval = setInterval(() => {
+    hudTimer.textContent = fmtTime(elapsedMsBeforePause + (Date.now() - timerStart));
   }, 1000);
 }
 
@@ -766,6 +768,10 @@ function finishWorkout() {
   haptic([50, 100, 50]);
   say(grade === 'A' ? 'Great set!' : grade === 'B' ? 'Good work, keep improving' : 'Keep practicing your form');
 
+  if (stream) {
+    stream.getTracks().forEach((t) => t.stop());
+    stream = null;
+  }
 }
 
 function resetForNewSet() {
