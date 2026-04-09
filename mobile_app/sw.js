@@ -1,4 +1,4 @@
-const CACHE_NAME = 'postur-v3';
+const CACHE_NAME = 'postur-v4';
 const STATIC_ASSETS = [
   './',
   './index.html',
@@ -51,6 +51,9 @@ self.addEventListener('fetch', (event) => {
         caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
         return res;
       });
+      const url = new URL(request.url);
+      const isAppShellAsset = ['/app.js', '/styles.css', '/index.html', '/sw.js'].includes(url.pathname);
+      if (isAppShellAsset) return fetched.catch(() => cached);
       return cached || fetched;
     })
   );

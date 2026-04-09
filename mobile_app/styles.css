@@ -196,6 +196,11 @@ html, body {
   object-fit: cover;
 }
 
+.camera-wrap.is-front video,
+.camera-wrap.is-front canvas {
+  transform: scaleX(-1);
+}
+
 .camera-wrap canvas {
   z-index: 2;
 }
@@ -404,6 +409,11 @@ html, body {
   flex-shrink: 0;
 }
 
+.start-alt {
+  width: 100%;
+  margin-top: 10px;
+}
+
 .btn-primary {
   width: 100%;
   display: flex;
@@ -433,7 +443,7 @@ html, body {
 
 .workout-controls {
   display: grid;
-  grid-template-columns: 1fr 1fr auto;
+  grid-template-columns: 1fr 1fr auto auto;
   gap: 8px;
   padding: 10px 12px 0;
   flex-shrink: 0;
