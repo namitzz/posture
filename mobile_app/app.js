@@ -123,6 +123,7 @@ let timerInterval = null;
 let lastCueTime   = 0;
 let lastCueText   = '';
 let formScore     = 100;          // live form score
+let manualMode    = false;
 
 const THRESHOLDS = {
   descent:  170,
@@ -590,6 +591,8 @@ function startTimer() {
   stopTimer();
   timerInterval = setInterval(() => {
     updateTimerUI();
+  timerInterval = setInterval(() => {
+    hudTimer.textContent = fmtTime(elapsedMsBeforePause + (Date.now() - timerStart));
   }, 1000);
 }
 
@@ -618,21 +621,19 @@ function stopCameraStream() {
 
 /* ---------- Workout lifecycle -------------------------------- */
 
-async function startWorkout({ skipCamera = false } = {}) {
+async function startWorkout() {
   startBtn.querySelector('span').textContent = 'Initializing AI coach...';
   startBtn.disabled = true;
   startNoCameraBtn.disabled = true;
   noCameraMode = skipCamera;
 
-  if (!skipCamera) {
-    try {
-      if (!landmarker) await initLandmarker();
-      await startCamera();
-    } catch (err) {
-      console.warn('[Workout] Camera/MediaPipe unavailable, switching to no-camera mode.', err);
-      noCameraMode = true;
-      stopCameraStream();
-    }
+  try {
+    if (!landmarker) await initLandmarker();
+    await startCamera();
+    manualMode = false;
+  } catch (err) {
+    console.warn('[Startup] Falling back to manual mode:', err);
+    manualMode = true;
   }
 
   // Reset state
@@ -651,7 +652,7 @@ async function startWorkout({ skipCamera = false } = {}) {
   // Update UI
   repsEl.textContent = '0';
   depthEl.textContent = '--';
-  phaseEl.textContent = 'standing';
+  phaseEl.textContent = manualMode ? 'manual' : 'standing';
   angleEl.textContent = '--';
   scoreValue.textContent = '--';
   updateScoreRing(0);
@@ -660,18 +661,23 @@ async function startWorkout({ skipCamera = false } = {}) {
   startBtn.classList.add('hidden');
   startNoCameraBtn.classList.add('hidden');
   workoutCtrl.classList.remove('hidden');
-  manualRepBtn.classList.toggle('hidden', !noCameraMode);
+  manualRepBtn.classList.toggle('hidden', !manualMode);
   summaryEl.classList.add('hidden');
+
+  if (manualMode) {
+    placeholder.classList.remove('hidden');
+    hudStatus.querySelector('span:last-child').textContent = 'Manual mode';
+    setStatusDot('warning');
+    cueText.textContent = 'Camera unavailable — tap Add Rep to track manually';
+    cueOverlay.classList.remove('hidden');
+  } else {
+    cueOverlay.classList.add('hidden');
+  }
 
   startTimer();
   haptic(100);
   say('Let\'s go');
-  if (noCameraMode) {
-    setStatusDot('warning');
-    hudStatus.querySelector('span:last-child').textContent = 'No camera mode';
-  } else {
-    loop();
-  }
+  if (!manualMode) loop();
 }
 
 function pauseWorkout() {
@@ -701,6 +707,7 @@ function finishWorkout() {
 
   // Show summary
   workoutCtrl.classList.add('hidden');
+  manualRepBtn.classList.add('hidden');
 
   if (setData.length === 0) {
     startBtn.classList.remove('hidden');
@@ -768,6 +775,10 @@ function finishWorkout() {
   haptic([50, 100, 50]);
   say(grade === 'A' ? 'Great set!' : grade === 'B' ? 'Good work, keep improving' : 'Keep practicing your form');
 
+  if (stream) {
+    stream.getTracks().forEach((t) => t.stop());
+    stream = null;
+  }
 }
 
 function resetForNewSet() {
@@ -790,6 +801,8 @@ function resetForNewSet() {
   elapsedMsBeforePause = 0;
   setStatusDot('');
   hudStatus.querySelector('span:last-child').textContent = 'Ready';
+  manualRepBtn.classList.add('hidden');
+  manualMode = false;
 }
 
 function addManualRep() {
@@ -824,6 +837,25 @@ audioToggle.addEventListener('click', () => {
   audioEnabled = !audioEnabled;
   audioToggle.classList.toggle('muted', !audioEnabled);
   if (!audioEnabled) window.speechSynthesis?.cancel();
+});
+
+manualRepBtn.addEventListener('click', () => {
+  if (!running || paused || !manualMode) return;
+  repCount++;
+  const repScore = 75;
+  setData.push({
+    minAngle: settings.depthTarget + 10,
+    hadValgus: false,
+    hadLean: false,
+    score: repScore,
+    depthLabel: 'manual',
+  });
+  repsEl.textContent = String(repCount);
+  phaseEl.textContent = 'manual';
+  angleEl.textContent = '--';
+  updateScoreRing(repScore);
+  showRepFlash(repCount);
+  say(`${repCount}`);
 });
 
 document.addEventListener('visibilitychange', () => {
