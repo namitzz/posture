@@ -4,6 +4,12 @@
 
 /* ---------- MediaPipe globals (resolved after CDN loads) ----- */
 let FilesetResolver, PoseLandmarker;
+// Backward-compatibility shim:
+// Some previously deployed bundles referenced these legacy globals.
+// Keeping them defined prevents hard runtime crashes on mixed/stale caches.
+const useLegacyPoseFallback = false;
+let legacyPose = null;
+let legacyPoseResults = null;
 const MEDIAPIPE_VERSION = '0.10.14';
 const MEDIAPIPE_CDN_TIMEOUT_MS = 8000;
 const MEDIAPIPE_BUNDLES = [
@@ -44,6 +50,7 @@ const workoutCtrl   = $('workoutControls');
 const pauseBtn      = $('pauseBtn');
 const finishBtn     = $('finishBtn');
 const audioToggle   = $('audioToggle');
+const manualRepBtn  = $('manualRepBtn');
 
 const summaryEl     = $('summary');
 const summaryGrade  = $('summaryGrade');
@@ -114,6 +121,7 @@ let timerInterval = null;
 let lastCueTime   = 0;
 let lastCueText   = '';
 let formScore     = 100;          // live form score
+let manualMode    = false;
 
 const THRESHOLDS = {
   descent:  170,
@@ -577,6 +585,10 @@ async function loop() {
 
 function startTimer() {
   if (!timerStart) timerStart = Date.now();
+  updateTimerUI();
+  stopTimer();
+  timerInterval = setInterval(() => {
+    updateTimerUI();
   timerInterval = setInterval(() => {
     hudTimer.textContent = fmtTime(elapsedMsBeforePause + (Date.now() - timerStart));
   }, 1000);
@@ -614,11 +626,10 @@ async function startWorkout() {
   try {
     if (!landmarker) await initLandmarker();
     await startCamera();
+    manualMode = false;
   } catch (err) {
-    startBtn.querySelector('span').textContent = 'Start Workout';
-    startBtn.disabled = false;
-    alert(`Could not start: ${err.message}`);
-    return;
+    console.warn('[Startup] Falling back to manual mode:', err);
+    manualMode = true;
   }
 
   // Reset state
@@ -637,7 +648,7 @@ async function startWorkout() {
   // Update UI
   repsEl.textContent = '0';
   depthEl.textContent = '--';
-  phaseEl.textContent = 'standing';
+  phaseEl.textContent = manualMode ? 'manual' : 'standing';
   angleEl.textContent = '--';
   scoreValue.textContent = '--';
   updateScoreRing(0);
@@ -645,12 +656,23 @@ async function startWorkout() {
 
   startBtn.classList.add('hidden');
   workoutCtrl.classList.remove('hidden');
+  manualRepBtn.classList.toggle('hidden', !manualMode);
   summaryEl.classList.add('hidden');
+
+  if (manualMode) {
+    placeholder.classList.remove('hidden');
+    hudStatus.querySelector('span:last-child').textContent = 'Manual mode';
+    setStatusDot('warning');
+    cueText.textContent = 'Camera unavailable — tap Add Rep to track manually';
+    cueOverlay.classList.remove('hidden');
+  } else {
+    cueOverlay.classList.add('hidden');
+  }
 
   startTimer();
   haptic(100);
   say('Let\'s go');
-  loop();
+  if (!manualMode) loop();
 }
 
 function pauseWorkout() {
@@ -676,9 +698,11 @@ function finishWorkout() {
 
   const finalElapsed = elapsedMsBeforePause + (timerStart ? Date.now() - timerStart : 0);
   const duration = fmtTime(finalElapsed);
+  stopCameraStream();
 
   // Show summary
   workoutCtrl.classList.add('hidden');
+  manualRepBtn.classList.add('hidden');
 
   if (setData.length === 0) {
     startBtn.classList.remove('hidden');
@@ -767,6 +791,8 @@ function resetForNewSet() {
   elapsedMsBeforePause = 0;
   setStatusDot('');
   hudStatus.querySelector('span:last-child').textContent = 'Ready';
+  manualRepBtn.classList.add('hidden');
+  manualMode = false;
 }
 
 /* ---------- Event listeners ---------------------------------- */
@@ -780,6 +806,25 @@ audioToggle.addEventListener('click', () => {
   audioEnabled = !audioEnabled;
   audioToggle.classList.toggle('muted', !audioEnabled);
   if (!audioEnabled) window.speechSynthesis?.cancel();
+});
+
+manualRepBtn.addEventListener('click', () => {
+  if (!running || paused || !manualMode) return;
+  repCount++;
+  const repScore = 75;
+  setData.push({
+    minAngle: settings.depthTarget + 10,
+    hadValgus: false,
+    hadLean: false,
+    score: repScore,
+    depthLabel: 'manual',
+  });
+  repsEl.textContent = String(repCount);
+  phaseEl.textContent = 'manual';
+  angleEl.textContent = '--';
+  updateScoreRing(repScore);
+  showRepFlash(repCount);
+  say(`${repCount}`);
 });
 
 document.addEventListener('visibilitychange', () => {
