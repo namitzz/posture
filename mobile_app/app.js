@@ -577,10 +577,8 @@ async function loop() {
 
 function startTimer() {
   if (!timerStart) timerStart = Date.now();
-  updateTimerUI();
-  stopTimer();
   timerInterval = setInterval(() => {
-    updateTimerUI();
+    hudTimer.textContent = fmtTime(elapsedMsBeforePause + (Date.now() - timerStart));
   }, 1000);
 }
 
@@ -678,7 +676,6 @@ function finishWorkout() {
 
   const finalElapsed = elapsedMsBeforePause + (timerStart ? Date.now() - timerStart : 0);
   const duration = fmtTime(finalElapsed);
-  stopCameraStream();
 
   // Show summary
   workoutCtrl.classList.add('hidden');
@@ -747,6 +744,10 @@ function finishWorkout() {
   haptic([50, 100, 50]);
   say(grade === 'A' ? 'Great set!' : grade === 'B' ? 'Good work, keep improving' : 'Keep practicing your form');
 
+  if (stream) {
+    stream.getTracks().forEach((t) => t.stop());
+    stream = null;
+  }
 }
 
 function resetForNewSet() {
