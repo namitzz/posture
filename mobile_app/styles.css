@@ -196,6 +196,11 @@ html, body {
   object-fit: cover;
 }
 
+.camera-wrap.is-front video,
+.camera-wrap.is-front canvas {
+  transform: scaleX(-1);
+}
+
 .camera-wrap canvas {
   z-index: 2;
 }
