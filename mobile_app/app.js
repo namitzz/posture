@@ -4,9 +4,12 @@
 
 /* ---------- MediaPipe globals (resolved after CDN loads) ----- */
 let FilesetResolver, PoseLandmarker;
+const MEDIAPIPE_VERSION = '0.10.14';
+const MEDIAPIPE_CDN_TIMEOUT_MS = 8000;
 const MEDIAPIPE_BUNDLES = [
-  'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12/vision_bundle.js',
-  'https://unpkg.com/@mediapipe/tasks-vision@0.10.12/vision_bundle.js',
+  `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_VERSION}/vision_bundle.js`,
+  `https://unpkg.com/@mediapipe/tasks-vision@${MEDIAPIPE_VERSION}/vision_bundle.js`,
+  `https://fastly.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_VERSION}/vision_bundle.js`,
 ];
 
 /* ---------- DOM refs ----------------------------------------- */
@@ -106,6 +109,7 @@ let hadValgus     = false;
 let hadLean       = false;
 let setData       = [];           // per-rep data
 let timerStart    = 0;
+let elapsedMsBeforePause = 0;
 let timerInterval = null;
 let lastCueTime   = 0;
 let lastCueText   = '';
@@ -234,6 +238,19 @@ async function initLandmarker() {
   const vision = await FilesetResolver.forVisionTasks(
     `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_VERSION}/wasm`
   );
+
+  landmarker = await PoseLandmarker.createFromOptions(vision, {
+    baseOptions: {
+      modelAssetPath:
+        'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task',
+      delegate: 'GPU',
+    },
+    runningMode: 'VIDEO',
+    numPoses: 1,
+    minPoseDetectionConfidence: 0.5,
+    minPosePresenceConfidence: 0.5,
+    minTrackingConfidence: 0.5,
+  });
 }
 
 async function ensureMediaPipeLoaded() {
@@ -258,7 +275,7 @@ async function ensureMediaPipeLoaded() {
   throw new Error('MediaPipe failed to load from CDN');
 }
 
-function loadScript(src, timeoutMs = 8000) {
+function loadScript(src, timeoutMs = MEDIAPIPE_CDN_TIMEOUT_MS) {
   return new Promise((resolve, reject) => {
     const existing = document.querySelector(`script[data-mediapipe-src="${src}"]`);
     if (existing) {
@@ -293,51 +310,6 @@ function loadScript(src, timeoutMs = 8000) {
   });
 }
 
-async function ensureMediaPipeLoaded() {
-  if ((window.vision && window.vision.FilesetResolver) || window.FilesetResolver) {
-    return;
-  }
-
-  for (const src of MEDIAPIPE_BUNDLES) {
-    try {
-      await loadScript(src);
-      if ((window.vision && window.vision.FilesetResolver) || window.FilesetResolver) {
-        return;
-      }
-    } catch (_err) {
-      // Try next CDN URL.
-    }
-  }
-
-  throw new Error('MediaPipe failed to load from CDN');
-}
-
-function loadScript(src) {
-  return new Promise((resolve, reject) => {
-    const existing = document.querySelector(`script[data-mediapipe-src="${src}"]`);
-    if (existing) {
-      if (existing.dataset.loaded === 'true') {
-        resolve();
-      } else {
-        existing.addEventListener('load', () => resolve(), { once: true });
-        existing.addEventListener('error', () => reject(new Error(`Failed to load ${src}`)), { once: true });
-      }
-      return;
-    }
-
-    const script = document.createElement('script');
-    script.src = src;
-    script.async = true;
-    script.dataset.mediapipeSrc = src;
-    script.addEventListener('load', () => {
-      script.dataset.loaded = 'true';
-      resolve();
-    }, { once: true });
-    script.addEventListener('error', () => reject(new Error(`Failed to load ${src}`)), { once: true });
-    document.head.appendChild(script);
-  });
-}
-
 /* ---------- Camera ------------------------------------------- */
 
 async function startCamera() {
@@ -351,6 +323,7 @@ async function startCamera() {
   });
   video.srcObject = stream;
   await video.play();
+  cameraWrap.classList.toggle('is-front', settings.frontCam);
   placeholder.classList.add('hidden');
 }
 
@@ -560,13 +533,7 @@ async function loop() {
 
   let result;
   try {
-    if (useLegacyPoseFallback && legacyPose) {
-      await legacyPose.send({ image: video });
-      const legacyLandmarks = legacyPoseResults?.poseLandmarks || null;
-      result = legacyLandmarks ? { landmarks: [legacyLandmarks] } : null;
-    } else {
-      result = landmarker.detectForVideo(video, performance.now());
-    }
+    result = landmarker.detectForVideo(video, performance.now());
   } catch (err) {
     console.warn('[MediaPipe] Detection step failed.', err);
     requestAnimationFrame(loop);
@@ -609,10 +576,9 @@ async function loop() {
 /* ---------- Timer -------------------------------------------- */
 
 function startTimer() {
-  timerStart = Date.now();
-  hudTimer.textContent = '00:00';
+  if (!timerStart) timerStart = Date.now();
   timerInterval = setInterval(() => {
-    hudTimer.textContent = fmtTime(Date.now() - timerStart);
+    hudTimer.textContent = fmtTime(elapsedMsBeforePause + (Date.now() - timerStart));
   }, 1000);
 }
 
@@ -624,11 +590,11 @@ function stopTimer() {
 /* ---------- Workout lifecycle -------------------------------- */
 
 async function startWorkout() {
-  startBtn.querySelector('span').textContent = 'Loading...';
+  startBtn.querySelector('span').textContent = 'Initializing AI coach...';
   startBtn.disabled = true;
 
   try {
-    if (!landmarker && !useLegacyPoseFallback) await initLandmarker();
+    if (!landmarker) await initLandmarker();
     await startCamera();
   } catch (err) {
     startBtn.querySelector('span').textContent = 'Start Workout';
@@ -647,6 +613,8 @@ async function startWorkout() {
   hadLean = false;
   setData = [];
   formScore = 100;
+  timerStart = 0;
+  elapsedMsBeforePause = 0;
 
   // Update UI
   repsEl.textContent = '0';
@@ -673,6 +641,8 @@ function pauseWorkout() {
     pauseBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg> Resume';
     setStatusDot('');
     hudStatus.querySelector('span:last-child').textContent = 'Paused';
+    elapsedMsBeforePause += Date.now() - timerStart;
+    timerStart = 0;
     stopTimer();
   } else {
     pauseBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> Pause';
@@ -686,7 +656,8 @@ function finishWorkout() {
   paused = false;
   stopTimer();
 
-  const duration = fmtTime(Date.now() - timerStart);
+  const finalElapsed = elapsedMsBeforePause + (timerStart ? Date.now() - timerStart : 0);
+  const duration = fmtTime(finalElapsed);
 
   // Show summary
   workoutCtrl.classList.add('hidden');
@@ -754,6 +725,11 @@ function finishWorkout() {
 
   haptic([50, 100, 50]);
   say(grade === 'A' ? 'Great set!' : grade === 'B' ? 'Good work, keep improving' : 'Keep practicing your form');
+
+  if (stream) {
+    stream.getTracks().forEach((t) => t.stop());
+    stream = null;
+  }
 }
 
 function resetForNewSet() {
@@ -769,6 +745,8 @@ function resetForNewSet() {
   scoreValue.textContent = '--';
   updateScoreRing(0);
   hudTimer.textContent = '00:00';
+  timerStart = 0;
+  elapsedMsBeforePause = 0;
   setStatusDot('');
   hudStatus.querySelector('span:last-child').textContent = 'Ready';
 }
