@@ -4,12 +4,6 @@
 
 /* ---------- MediaPipe globals (resolved after CDN loads) ----- */
 let FilesetResolver, PoseLandmarker;
-// Backward-compatibility shim:
-// Some previously deployed bundles referenced these legacy globals.
-// Keeping them defined prevents hard runtime crashes on mixed/stale caches.
-const useLegacyPoseFallback = false;
-let legacyPose = null;
-let legacyPoseResults = null;
 const MEDIAPIPE_VERSION = '0.10.14';
 const MEDIAPIPE_CDN_TIMEOUT_MS = 8000;
 const MEDIAPIPE_BUNDLES = [
@@ -583,10 +577,8 @@ async function loop() {
 
 function startTimer() {
   if (!timerStart) timerStart = Date.now();
-  updateTimerUI();
-  stopTimer();
   timerInterval = setInterval(() => {
-    updateTimerUI();
+    hudTimer.textContent = fmtTime(elapsedMsBeforePause + (Date.now() - timerStart));
   }, 1000);
 }
 
@@ -684,7 +676,6 @@ function finishWorkout() {
 
   const finalElapsed = elapsedMsBeforePause + (timerStart ? Date.now() - timerStart : 0);
   const duration = fmtTime(finalElapsed);
-  stopCameraStream();
 
   // Show summary
   workoutCtrl.classList.add('hidden');
@@ -753,6 +744,10 @@ function finishWorkout() {
   haptic([50, 100, 50]);
   say(grade === 'A' ? 'Great set!' : grade === 'B' ? 'Good work, keep improving' : 'Keep practicing your form');
 
+  if (stream) {
+    stream.getTracks().forEach((t) => t.stop());
+    stream = null;
+  }
 }
 
 function resetForNewSet() {
