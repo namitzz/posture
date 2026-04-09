@@ -843,6 +843,25 @@ function addManualRep() {
   updateScoreRing(repScore);
 }
 
+function addManualRep() {
+  if (!running || paused || !noCameraMode) return;
+  repCount += 1;
+  const repScore = 85;
+  setData.push({
+    minAngle: settings.depthTarget,
+    hadValgus: false,
+    hadLean: false,
+    score: repScore,
+    depthLabel: 'manual',
+  });
+  repsEl.textContent = repCount;
+  phaseEl.textContent = 'manual';
+  angleEl.textContent = '--';
+  showRepFlash(repCount);
+  haptic(30);
+  updateScoreRing(repScore);
+}
+
 /* ---------- Event listeners ---------------------------------- */
 
 startBtn.addEventListener('click', () => startWorkout());
