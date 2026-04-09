@@ -583,8 +583,26 @@ function startTimer() {
 }
 
 function stopTimer() {
-  clearInterval(timerInterval);
-  timerInterval = null;
+  if (timerInterval) {
+    clearInterval(timerInterval);
+    timerInterval = null;
+  }
+}
+
+function updateTimerUI() {
+  const elapsed = elapsedMsBeforePause + (timerStart ? Date.now() - timerStart : 0);
+  hudTimer.textContent = fmtTime(elapsed);
+}
+
+function stopCameraStream() {
+  if (stream) {
+    stream.getTracks().forEach((t) => t.stop());
+    stream = null;
+  }
+  video.srcObject = null;
+  placeholder.classList.remove('hidden');
+  cameraWrap.classList.remove('is-front');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
 }
 
 /* ---------- Workout lifecycle -------------------------------- */
@@ -762,6 +780,19 @@ audioToggle.addEventListener('click', () => {
   audioEnabled = !audioEnabled;
   audioToggle.classList.toggle('muted', !audioEnabled);
   if (!audioEnabled) window.speechSynthesis?.cancel();
+});
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden' && running && !paused) {
+    pauseWorkout();
+  }
+});
+
+window.addEventListener('beforeunload', () => {
+  running = false;
+  paused = false;
+  stopTimer();
+  stopCameraStream();
 });
 
 /* ---------- Service Worker ----------------------------------- */
