@@ -1,4 +1,4 @@
-import { FilesetResolver, PoseLandmarker } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12/+esm";
+let FilesetResolver, PoseLandmarker;
 
 const D = id => document.getElementById(id);
 
@@ -234,7 +234,33 @@ function fireConfetti() {
 }
 
 // ── MediaPipe ────────────────────────────────────────────────
+async function loadMediaPipe() {
+  if (FilesetResolver) return;
+  // Try ES module dynamic import first
+  try {
+    const mp = await import("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12/+esm");
+    FilesetResolver = mp.FilesetResolver;
+    PoseLandmarker = mp.PoseLandmarker;
+    return;
+  } catch {}
+  // Fallback: load via script tag (UMD)
+  if (!FilesetResolver) {
+    await new Promise((resolve, reject) => {
+      const s = document.createElement("script");
+      s.src = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12";
+      s.onload = resolve;
+      s.onerror = reject;
+      document.head.appendChild(s);
+    });
+    const ns = window.vision || window;
+    FilesetResolver = ns.FilesetResolver;
+    PoseLandmarker = ns.PoseLandmarker;
+  }
+  if (!FilesetResolver) throw new Error("MediaPipe failed to load");
+}
+
 async function initLandmarker() {
+  await loadMediaPipe();
   const vision = await FilesetResolver.forVisionTasks(
     "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12/wasm"
   );
