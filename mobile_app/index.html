@@ -107,7 +107,20 @@
           <!-- Camera placeholder -->
           <div id="cameraPlaceholder" class="camera-placeholder">
             <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.3)" stroke-width="1.5" stroke-linecap="round"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
-            <p>Tap Start to begin</p>
+            <p id="cameraPlaceholderText">Tap Start to begin</p>
+          </div>
+
+          <!-- Pre-workout countdown overlay -->
+          <div id="countdown" class="countdown hidden">
+            <div class="countdown-label">Get into position</div>
+            <div class="countdown-num" id="countdownNum">3</div>
+            <div class="countdown-hint">Step 6–8 ft from camera, full body in frame</div>
+          </div>
+
+          <!-- "No person detected" hint -->
+          <div id="framingHint" class="framing-hint hidden">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0116 0"/></svg>
+            <span>Step into frame</span>
           </div>
         </div>
       </section>
@@ -160,8 +173,10 @@
         <button id="audioToggle" class="btn-secondary">
           <svg id="audioIcon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 010 7.07" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M19.07 4.93a10 10 0 010 14.14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
         </button>
-        <button id="manualRepBtn" class="btn-secondary hidden">+ Rep</button>
       </section>
+
+      <!-- Toast for transient errors / info -->
+      <div id="toast" class="toast hidden"></div>
 
       <!-- Set summary (shown after finishing) -->
       <section id="summary" class="summary-card hidden">

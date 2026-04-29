@@ -28,6 +28,11 @@ const canvas        = $('overlay');
 const ctx           = canvas.getContext('2d');
 const cameraWrap    = $('cameraWrap');
 const placeholder   = $('cameraPlaceholder');
+const placeholderText = $('cameraPlaceholderText');
+const countdownEl   = $('countdown');
+const countdownNum  = $('countdownNum');
+const framingHint   = $('framingHint');
+const toastEl       = $('toast');
 
 const hudStatus     = $('hudStatus');
 const hudTimer      = $('hudTimer');
@@ -74,6 +79,7 @@ const DEFAULTS = {
   voice: true,
   haptic: true,
   depthTarget: 90,
+  audioEnabled: true,
 };
 
 let settings = { ...DEFAULTS, ...loadJSON('postur_settings') };
@@ -110,7 +116,7 @@ let stream        = null;
 let running       = false;
 let paused        = false;
 let noCameraMode  = false;
-let audioEnabled  = true;
+let audioEnabled  = settings.audioEnabled !== false;
 let phase         = 'standing';   // standing | descending | bottom | ascending
 let repCount      = 0;
 let minAngle      = 180;
@@ -124,6 +130,8 @@ let lastCueTime   = 0;
 let lastCueText   = '';
 let formScore     = 100;          // live form score
 let manualMode    = false;
+let wakeLock      = null;         // Screen Wake Lock sentinel
+let lastPersonSeenAt = 0;         // performance.now() of last successful detection
 
 const THRESHOLDS = {
   descent:  170,
@@ -169,15 +177,71 @@ function fmtTime(ms) {
 
 /* ---------- Splash ------------------------------------------- */
 
+let splashHidden = false;
+function hideSplash() {
+  if (splashHidden) return;
+  splashHidden = true;
+  splash.classList.add('fade-out');
+  appEl.classList.remove('hidden');
+  setTimeout(() => splash.classList.add('hidden'), 500);
+}
+
+// Hide as soon as DOM is ready + a brief moment for the loader bar to feel intentional
 window.addEventListener('load', () => {
-  setTimeout(() => {
-    splash.classList.add('fade-out');
-    setTimeout(() => {
-      splash.classList.add('hidden');
-      appEl.classList.remove('hidden');
-    }, 600);
-  }, 2200);
+  setTimeout(hideSplash, 800);
 });
+// Safety net — never get stuck on splash
+setTimeout(hideSplash, 3500);
+
+/* ---------- Wake Lock --------------------------------------- */
+
+async function acquireWakeLock() {
+  if (!('wakeLock' in navigator)) return;
+  try {
+    wakeLock = await navigator.wakeLock.request('screen');
+    wakeLock.addEventListener('release', () => { wakeLock = null; });
+  } catch (err) {
+    console.warn('[WakeLock] Could not acquire:', err);
+  }
+}
+
+async function releaseWakeLock() {
+  if (!wakeLock) return;
+  try { await wakeLock.release(); } catch {}
+  wakeLock = null;
+}
+
+// Re-acquire after the page comes back from being hidden
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && running && !paused && !wakeLock) {
+    acquireWakeLock();
+  }
+});
+
+/* ---------- iOS audio unlock --------------------------------- */
+// iOS Safari requires speechSynthesis.speak() to be called from inside a
+// user gesture before any later programmatic calls will play.
+let audioUnlocked = false;
+function unlockAudio() {
+  if (audioUnlocked || !window.speechSynthesis) return;
+  try {
+    const u = new SpeechSynthesisUtterance('');
+    u.volume = 0;
+    window.speechSynthesis.speak(u);
+    audioUnlocked = true;
+  } catch {}
+}
+
+/* ---------- Toast -------------------------------------------- */
+
+let toastTimeout = null;
+function showToast(msg, kind = 'info', duration = 3500) {
+  if (!toastEl) return;
+  toastEl.textContent = msg;
+  toastEl.className = 'toast ' + kind;
+  clearTimeout(toastTimeout);
+  toastTimeout = setTimeout(() => toastEl.classList.add('hidden'), duration);
+}
 
 /* ---------- Panel navigation --------------------------------- */
 
@@ -620,19 +684,28 @@ function stopCameraStream() {
 /* ---------- Workout lifecycle -------------------------------- */
 
 async function startWorkout({ skipCamera = false } = {}) {
-  startBtn.querySelector('span').textContent = 'Initializing AI coach...';
+  // Triggered from a real user gesture — unlock iOS audio + acquire wake lock now
+  unlockAudio();
+  acquireWakeLock();
+
+  startBtn.querySelector('span').textContent = 'Loading…';
   startBtn.disabled = true;
   startNoCameraBtn.disabled = true;
-  noCameraMode = skipCamera;
 
-  try {
-    if (!landmarker) await initLandmarker();
-    await startCamera();
-    manualMode = false;
-  } catch (err) {
-    console.warn('[Startup] Falling back to manual mode:', err);
-    manualMode = true;
+  let cameraOk = false;
+  if (!skipCamera) {
+    try {
+      if (!landmarker) await initLandmarker();
+      await startCamera();
+      cameraOk = true;
+    } catch (err) {
+      console.warn('[Startup] Camera unavailable, falling back to manual mode:', err);
+      const friendly = describeCameraError(err);
+      showToast(friendly, 'error', 5000);
+    }
   }
+  noCameraMode = !cameraOk;
+  manualMode = !cameraOk;
 
   // Reset state
   running = true;
@@ -646,6 +719,7 @@ async function startWorkout({ skipCamera = false } = {}) {
   formScore = 100;
   timerStart = 0;
   elapsedMsBeforePause = 0;
+  lastPersonSeenAt = 0;
 
   // Update UI
   repsEl.textContent = '0';
@@ -661,21 +735,77 @@ async function startWorkout({ skipCamera = false } = {}) {
   workoutCtrl.classList.remove('hidden');
   manualRepBtn.classList.toggle('hidden', !manualMode);
   summaryEl.classList.add('hidden');
+  framingHint.classList.add('hidden');
 
   if (manualMode) {
     placeholder.classList.remove('hidden');
+    placeholderText.textContent = skipCamera
+      ? 'Manual mode — tap + Rep to log each squat'
+      : 'Camera unavailable — tap + Rep to log each squat';
     hudStatus.querySelector('span:last-child').textContent = 'Manual mode';
     setStatusDot('warning');
-    cueText.textContent = 'Camera unavailable — tap Add Rep to track manually';
-    cueOverlay.classList.remove('hidden');
+    cueOverlay.classList.add('hidden');
+
+    startTimer();
+    haptic(100);
+    say('Manual mode ready');
   } else {
     cueOverlay.classList.add('hidden');
+    // 3-2-1 countdown so the user has time to get into position
+    await runCountdown(3);
+    startTimer();
+    haptic(100);
+    say('Let\'s go');
+    loop();
   }
 
-  startTimer();
-  haptic(100);
-  say('Let\'s go');
-  if (!manualMode) loop();
+  // Restore button labels for next time
+  startBtn.querySelector('span').textContent = 'Start Workout';
+  startBtn.disabled = false;
+  startNoCameraBtn.disabled = false;
+}
+
+function describeCameraError(err) {
+  const name = err && err.name;
+  if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+    return 'Camera permission denied. Allow camera access in your browser to use auto tracking.';
+  }
+  if (name === 'NotFoundError' || name === 'OverconstrainedError') {
+    return 'No camera found. Switched to manual mode.';
+  }
+  if (name === 'NotReadableError') {
+    return 'Camera is in use by another app. Switched to manual mode.';
+  }
+  if (err && /MediaPipe/i.test(err.message || '')) {
+    return 'Couldn\'t load AI model. Check your connection and reload.';
+  }
+  return 'Camera unavailable. Switched to manual mode.';
+}
+
+function runCountdown(seconds) {
+  return new Promise((resolve) => {
+    let n = seconds;
+    countdownNum.textContent = String(n);
+    countdownEl.classList.remove('hidden');
+    haptic(20);
+    const tick = () => {
+      n -= 1;
+      if (n <= 0) {
+        countdownEl.classList.add('hidden');
+        haptic([40, 30, 40]);
+        resolve();
+        return;
+      }
+      countdownNum.textContent = String(n);
+      countdownNum.classList.remove('pulse');
+      // force reflow to restart animation
+      void countdownNum.offsetWidth;
+      countdownNum.classList.add('pulse');
+      haptic(20);
+      setTimeout(tick, 1000);
+    };
+    setTimeout(tick, 1000);
+  });
 }
 
 function pauseWorkout() {
