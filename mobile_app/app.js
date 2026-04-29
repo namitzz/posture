@@ -1,8 +1,3 @@
-/* =============================================================
-   postur — AI Form Coach  |  Production App
-   ============================================================= */
-
-/* ---------- MediaPipe globals (resolved after CDN loads) ----- */
 let FilesetResolver, PoseLandmarker;
 // Backward-compatibility shim:
 // Some previously deployed bundles referenced these legacy globals.
@@ -168,14 +163,111 @@ function haptic(pattern) {
   if (!settings.haptic || !navigator.vibrate) return;
   navigator.vibrate(pattern);
 }
-
+function say(t) {
+  if (!settings.voice || !audioOn || !window.speechSynthesis) return;
+  const u = new SpeechSynthesisUtterance(t); u.rate = 1.1; u.pitch = 0.95;
+  speechSynthesis.cancel(); speechSynthesis.speak(u);
+}
+function haptic(p) { if (settings.haptic && navigator.vibrate) navigator.vibrate(p); }
 function fmtTime(ms) {
   const s = Math.floor(ms / 1000);
-  const m = Math.floor(s / 60);
-  return `${String(m).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+  return String(Math.floor(s/60)).padStart(2,"0") + ":" + String(s%60).padStart(2,"0");
 }
 
-/* ---------- Splash ------------------------------------------- */
+// ── Settings ──────────────────────────────────────────────────
+const DEFS = { frontCam:false, voice:true, haptic:true, countdown:true, depthTarget:90, restDuration:60, userName:"" };
+let settings = { ...DEFS, ...loadJ("postur_settings") };
+function saveSets() { saveJ("postur_settings", settings); }
+function applyUI() {
+  D("setFrontCam").checked = settings.frontCam;
+  D("setVoice").checked = settings.voice;
+  D("setHaptic").checked = settings.haptic;
+  D("setCountdown").checked = settings.countdown;
+  D("setDepth").value = settings.depthTarget;
+  D("setRest").value = settings.restDuration;
+}
+applyUI();
+setTimeout(updateGreeting, 0);
+for (const [id, key] of [["setFrontCam","frontCam"],["setVoice","voice"],["setHaptic","haptic"],["setCountdown","countdown"]]) {
+  D(id).addEventListener("change", e => { settings[key] = e.target.checked; saveSets(); });
+}
+D("setDepth").addEventListener("change", e => { settings.depthTarget = Math.max(60,Math.min(120,+e.target.value||90)); e.target.value=settings.depthTarget; saveSets(); });
+D("setRest").addEventListener("change", e => { settings.restDuration = Math.max(10,Math.min(300,+e.target.value||60)); e.target.value=settings.restDuration; saveSets(); });
+
+// ── State ─────────────────────────────────────────────────────
+let landmarker = null, stream = null, running = false, paused = false, audioOn = true;
+let phase = "standing", repCount = 0, minAngle = 180, hadValgus = false, hadLean = false;
+let setData = [], timerStart = 0, timerInterval = null;
+let lastCueTime = 0, lastCueMsg = "", formScore = 100;
+let repStartTime = 0;
+let restInterval = null, restRemaining = 0;
+const THRESH = { descent:170, bottom:150, ascent:155, stand:168, valgus:0.12 };
+
+// ── Name Screen ──────────────────────────────────────────────
+function showNameScreenIfNeeded() {
+  if (settings.userName) return false;
+  D("nameScreen").classList.remove("hidden");
+  return true;
+}
+function finishNameScreen() {
+  D("nameScreen").classList.add("hidden");
+  appEl.classList.remove("hidden");
+  updateGreeting();
+}
+D("nameInput").addEventListener("input", e => {
+  D("nameSubmit").disabled = !e.target.value.trim();
+});
+D("nameSubmit").addEventListener("click", () => {
+  const name = D("nameInput").value.trim();
+  if (name) { settings.userName = name; saveSets(); }
+  finishNameScreen();
+});
+D("nameSkip").addEventListener("click", finishNameScreen);
+
+function updateGreeting() {
+  const el = D("topbarGreeting");
+  const nameDisp = D("settingsNameDisplay");
+  if (settings.userName) {
+    el.textContent = "hey, " + settings.userName;
+    el.classList.remove("hidden");
+    if (nameDisp) nameDisp.textContent = settings.userName;
+  } else {
+    el.classList.add("hidden");
+    if (nameDisp) nameDisp.textContent = "not set";
+  }
+}
+
+D("changeNameBtn").addEventListener("click", () => {
+  const name = prompt("Enter your name:", settings.userName || "");
+  if (name !== null) {
+    settings.userName = name.trim();
+    saveSets();
+    updateGreeting();
+  }
+});
+
+// ── Onboarding ────────────────────────────────────────────────
+let onboardPage = 0;
+function showOnboarding() {
+  if (localStorage.getItem("postur_onboarded")) return false;
+  onboardingEl.classList.remove("hidden");
+  return true;
+}
+onboardingNext.addEventListener("click", () => {
+  onboardPage++;
+  if (onboardPage >= 3) {
+    localStorage.setItem("postur_onboarded", "1");
+    onboardingEl.classList.add("hidden");
+    if (!showNameScreenIfNeeded()) {
+      appEl.classList.remove("hidden");
+      updateGreeting();
+    }
+    return;
+  }
+  onboardingEl.querySelectorAll(".onboarding-page").forEach((p,i) => p.classList.toggle("active", i===onboardPage));
+  onboardingEl.querySelectorAll(".dot").forEach((d,i) => d.classList.toggle("active", i===onboardPage));
+  if (onboardPage === 2) onboardingNext.textContent = "let's gooo \u{1F680}";
+});
 
 let splashHidden = false;
 function hideSplash() {
@@ -245,62 +337,123 @@ function showToast(msg, kind = 'info', duration = 3500) {
 
 /* ---------- Panel navigation --------------------------------- */
 
-function openPanel(panel) {
-  panel.classList.remove('hidden', 'closing');
+// ── Streak ────────────────────────────────────────────────────
+function getStreak() { return loadJ("postur_streak"); }
+function updateStreak() {
+  const s = getStreak();
+  streakCount.textContent = s.current || 0;
+  streakBtn.classList.toggle("inactive", !(s.current > 0));
+}
+function bumpStreak() {
+  const s = getStreak();
+  const today = new Date().toDateString();
+  if (s.lastDate === today) return;
+  const yesterday = new Date(Date.now() - 86400000).toDateString();
+  if (s.lastDate === yesterday) { s.current = (s.current||0) + 1; }
+  else { s.current = 1; }
+  s.best = Math.max(s.best||0, s.current);
+  s.lastDate = today;
+  saveJ("postur_streak", s);
+  updateStreak();
 }
 
-function closePanel(panel) {
-  panel.classList.add('closing');
-  setTimeout(() => {
-    panel.classList.add('hidden');
-    panel.classList.remove('closing');
-  }, 250);
-}
-
-historyBtn.addEventListener('click', () => { renderHistory(); openPanel(historyPanel); });
-closeHistory.addEventListener('click', () => closePanel(historyPanel));
-settingsBtn.addEventListener('click', () => openPanel(settingsPanel));
-closeSettings.addEventListener('click', () => closePanel(settingsPanel));
-
-/* ---------- History ------------------------------------------ */
-
-function loadHistory() {
-  return loadJSON('postur_history').sets || [];
-}
-
-function saveHistory(sets) {
-  localStorage.setItem('postur_history', JSON.stringify({ sets }));
-}
-
+// ── History ───────────────────────────────────────────────────
+function loadHistory() { return (loadJ("postur_history").sets || []); }
+function saveHist(sets) { saveJ("postur_history", { sets }); }
 function renderHistory() {
   const sets = loadHistory();
-  if (!sets.length) {
-    historyList.innerHTML = '<p class="empty-state">No workouts yet. Start your first set!</p>';
-    return;
-  }
-  historyList.innerHTML = sets.slice().reverse().map((s) => {
+  const el = D("historyList");
+  if (!sets.length) { el.innerHTML = "<p class=\"empty-state\">No workouts yet. Start your first set!</p>"; return; }
+  el.innerHTML = sets.slice().reverse().map(s => {
     const g = s.grade.toLowerCase();
-    return `
-      <div class="history-item">
-        <div class="history-item-top">
-          <span class="history-date">${new Date(s.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
-          <span class="history-grade ${g}">${s.grade}</span>
-        </div>
-        <div class="history-item-stats">
-          <span>Reps<strong>${s.reps}</strong></span>
-          <span>Avg Depth<strong>${s.avgDepth}°</strong></span>
-          <span>Duration<strong>${s.duration}</strong></span>
-        </div>
-      </div>`;
-  }).join('');
+    return "<div class=\"history-item\"><div class=\"history-item-top\"><span class=\"history-date\">" +
+      new Date(s.date).toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"}) +
+      "</span><span class=\"history-grade " + g + "\">" + s.grade + "</span></div>" +
+      "<div class=\"history-item-stats\"><span>Reps<strong>" + s.reps + "</strong></span><span>Avg Depth<strong>" + s.avgDepth + "\u00b0</strong></span><span>Duration<strong>" + s.duration + "</strong></span></div></div>";
+  }).join("");
+}
+// ── Records ──────────────────────────────────────────────────
+function getRecords() { return loadJ("postur_records"); }
+function checkPB(setResult) {
+  const r = getRecords();
+  const pbs = [];
+  if (!r.bestRepScore || setResult.bestRep > r.bestRepScore) { r.bestRepScore = setResult.bestRep; r.bestRepDate = new Date().toISOString(); pbs.push("Best Single Rep Score"); }
+  if (!r.bestAvgScore || setResult.avgScore > r.bestAvgScore) { r.bestAvgScore = setResult.avgScore; r.bestAvgDate = new Date().toISOString(); pbs.push("Best Avg Set Score"); }
+  if (!r.mostReps || setResult.reps > r.mostReps) { r.mostReps = setResult.reps; r.mostRepsDate = new Date().toISOString(); pbs.push("Most Reps in a Set"); }
+  const streak = getStreak();
+  if (!r.longestStreak || (streak.current||0) > r.longestStreak) { r.longestStreak = streak.current; }
+  saveJ("postur_records", r);
+  return pbs;
+}
+function renderRecords() {
+  const r = getRecords();
+  const body = D("recordsBody");
+  const cards = [
+    { icon: "⚡", bg: "var(--green-dim)", label: "Best Rep Score", value: r.bestRepScore || "--", meta: r.bestRepDate ? new Date(r.bestRepDate).toLocaleDateString() : "" },
+    { icon: "🎯", bg: "var(--yellow-dim)", label: "Best Avg Set Score", value: r.bestAvgScore || "--", meta: r.bestAvgDate ? new Date(r.bestAvgDate).toLocaleDateString() : "" },
+    { icon: "💪", bg: "var(--orange-dim)", label: "Most Reps in a Set", value: r.mostReps || "--", meta: r.mostRepsDate ? new Date(r.mostRepsDate).toLocaleDateString() : "" },
+    { icon: "🔥", bg: "var(--red-dim)", label: "Longest Streak", value: (r.longestStreak || 0) + " days", meta: "" },
+  ];
+  body.innerHTML = cards.map(c =>
+    `<div class="record-card"><div class="record-icon" style="background:${c.bg}">${c.icon}</div><div class="record-info"><div class="record-label">${c.label}</div><div class="record-value">${c.value}</div>${c.meta ? `<div class="record-meta">${c.meta}</div>` : ""}</div></div>`
+  ).join("");
 }
 
-/* ---------- MediaPipe init ----------------------------------- */
+// ── Confetti ─────────────────────────────────────────────────
+function fireConfetti() {
+  confettiCanvas.classList.remove("hidden");
+  confettiCanvas.width = window.innerWidth;
+  confettiCanvas.height = window.innerHeight;
+  const particles = [];
+  const colors = ["#22c55e","#eab308","#f97316","#ef4444","#45b5ff","#a855f7","#ffffff"];
+  for (let i = 0; i < 120; i++) {
+    particles.push({
+      x: Math.random() * confettiCanvas.width,
+      y: -10 - Math.random() * 200,
+      w: 4 + Math.random() * 6,
+      h: 8 + Math.random() * 8,
+      vx: (Math.random() - 0.5) * 6,
+      vy: 2 + Math.random() * 4,
+      rot: Math.random() * 360,
+      rv: (Math.random() - 0.5) * 10,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      life: 1,
+    });
+  }
+  let frame;
+  function draw() {
+    confettiCtx.clearRect(0, 0, confettiCanvas.width, confettiCanvas.height);
+    let alive = false;
+    for (const p of particles) {
+      if (p.life <= 0) continue;
+      alive = true;
+      p.x += p.vx; p.y += p.vy; p.vy += 0.12; p.rot += p.rv;
+      p.life -= 0.005;
+      confettiCtx.save();
+      confettiCtx.translate(p.x, p.y);
+      confettiCtx.rotate(p.rot * Math.PI / 180);
+      confettiCtx.globalAlpha = Math.max(0, p.life);
+      confettiCtx.fillStyle = p.color;
+      confettiCtx.fillRect(-p.w/2, -p.h/2, p.w, p.h);
+      confettiCtx.restore();
+    }
+    if (alive) frame = requestAnimationFrame(draw);
+    else { confettiCanvas.classList.add("hidden"); confettiCtx.clearRect(0,0,confettiCanvas.width,confettiCanvas.height); }
+  }
+  frame = requestAnimationFrame(draw);
+}
 
 async function initLandmarker() {
   await ensureMediaPipeLoaded();
 
   if (!FilesetResolver) {
+    await new Promise((resolve, reject) => {
+      const s = document.createElement("script");
+      s.src = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12";
+      s.onload = resolve;
+      s.onerror = reject;
+      document.head.appendChild(s);
+    });
     const ns = window.vision || window;
     FilesetResolver = ns.FilesetResolver;
     PoseLandmarker = ns.PoseLandmarker;
@@ -309,6 +462,8 @@ async function initLandmarker() {
     throw new Error('MediaPipe failed to load (missing vision bundle)');
   }
 
+async function initLandmarker() {
+  await loadMediaPipe();
   const vision = await FilesetResolver.forVisionTasks(
     `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_VERSION}/wasm`
   );
@@ -384,227 +539,148 @@ function loadScript(src, timeoutMs = MEDIAPIPE_CDN_TIMEOUT_MS) {
   });
 }
 
-/* ---------- Camera ------------------------------------------- */
-
+// ── Camera ───────────────────────────────────────────────────
 async function startCamera() {
-  if (stream) {
-    stream.getTracks().forEach((t) => t.stop());
-    stream = null;
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  const facing = settings.frontCam ? "user" : "environment";
+  // Try ideal facingMode first, fall back to any camera
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: facing }, width: { ideal: 720 }, height: { ideal: 960 } },
+      audio: false,
+    });
+  } catch {
+    stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
   }
-  stream = await navigator.mediaDevices.getUserMedia({
-    video: { facingMode: settings.frontCam ? 'user' : 'environment', width: { ideal: 720 }, height: { ideal: 960 } },
-    audio: false,
-  });
   video.srcObject = stream;
+  video.setAttribute("playsinline", "true");
+  video.setAttribute("muted", "true");
   await video.play();
   cameraWrap.classList.toggle('is-front', settings.frontCam);
   placeholder.classList.add('hidden');
 }
 
-/* ---------- Pose drawing ------------------------------------- */
+async function flipCamera() {
+  settings.frontCam = !settings.frontCam;
+  saveSets();
+  await startCamera();
+}
+camFlipBtn.addEventListener("click", flipCamera);
 
-const SKELETON = [
-  [11,13],[13,15],[12,14],[14,16],  // arms
-  [11,12],                           // shoulders
-  [11,23],[12,24],[23,24],           // torso
-  [23,25],[25,27],[24,26],[26,28],   // legs
-];
-
+// ── Pose Drawing ─────────────────────────────────────────────
+const SKEL = [[11,13],[13,15],[12,14],[14,16],[11,12],[11,23],[12,24],[23,24],[23,25],[25,27],[24,26],[26,28]];
 function drawPose(lm) {
-  const w = canvas.width;
-  const h = canvas.height;
+  const w = canvas.width, h = canvas.height;
   ctx.clearRect(0, 0, w, h);
-
-  // Draw skeleton
-  for (const [a, b] of SKELETON) {
+  for (const [a,b] of SKEL) {
     const A = lm[a], B = lm[b];
     if (!A || !B || A.visibility < 0.5 || B.visibility < 0.5) continue;
-
-    const gradient = ctx.createLinearGradient(A.x * w, A.y * h, B.x * w, B.y * h);
-    gradient.addColorStop(0, 'rgba(255, 255, 255, 0.8)');
-    gradient.addColorStop(1, 'rgba(255, 255, 255, 0.4)');
-
-    ctx.beginPath();
-    ctx.moveTo(A.x * w, A.y * h);
-    ctx.lineTo(B.x * w, B.y * h);
-    ctx.strokeStyle = gradient;
-    ctx.lineWidth = 3;
-    ctx.lineCap = 'round';
-    ctx.stroke();
+    const g = ctx.createLinearGradient(A.x*w, A.y*h, B.x*w, B.y*h);
+    g.addColorStop(0, "rgba(255,255,255,0.8)"); g.addColorStop(1, "rgba(255,255,255,0.4)");
+    ctx.beginPath(); ctx.moveTo(A.x*w, A.y*h); ctx.lineTo(B.x*w, B.y*h);
+    ctx.strokeStyle = g; ctx.lineWidth = 3; ctx.lineCap = "round"; ctx.stroke();
   }
-
-  // Draw joints
-  const joints = [11,12,13,14,15,16,23,24,25,26,27,28];
-  for (const i of joints) {
-    const p = lm[i];
-    if (!p || p.visibility < 0.5) continue;
-    ctx.beginPath();
-    ctx.arc(p.x * w, p.y * h, 4, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-    ctx.fill();
+  for (const i of [11,12,13,14,15,16,23,24,25,26,27,28]) {
+    const p = lm[i]; if (!p || p.visibility < 0.5) continue;
+    ctx.beginPath(); ctx.arc(p.x*w, p.y*h, 4, 0, Math.PI*2);
+    ctx.fillStyle = "rgba(255,255,255,0.9)"; ctx.fill();
   }
-
-  // Highlight knees with color based on form
-  for (const i of [25, 26]) {
-    const p = lm[i];
-    if (!p || p.visibility < 0.5) continue;
-    ctx.beginPath();
-    ctx.arc(p.x * w, p.y * h, 8, 0, Math.PI * 2);
-    ctx.fillStyle = hadValgus ? 'rgba(239, 68, 68, 0.4)' : 'rgba(34, 197, 94, 0.3)';
-    ctx.fill();
+  for (const i of [25,26]) {
+    const p = lm[i]; if (!p || p.visibility < 0.5) continue;
+    ctx.beginPath(); ctx.arc(p.x*w, p.y*h, 8, 0, Math.PI*2);
+    ctx.fillStyle = hadValgus ? "rgba(239,68,68,0.4)" : "rgba(34,197,94,0.3)"; ctx.fill();
   }
 }
 
-/* ---------- Form analysis ------------------------------------ */
-
-function analyzeForm(lm, kneeAngle) {
-  const hipWidth  = dist(lm[23], lm[24]);
-  const kneeWidth = dist(lm[25], lm[26]);
-  const hipAngle  = calcAngle(lm[11], lm[23], lm[25]);
-
+// ── Form Analysis ────────────────────────────────────────────
+function analyzeForm(lm, ka) {
+  const hw = dist(lm[23], lm[24]), kw = dist(lm[25], lm[26]);
+  const ha = ang(lm[11], lm[23], lm[25]);
   const cues = [];
-  let penalty = 0;
-
-  // Knee valgus
-  if (hipWidth > 1e-6 && (hipWidth - kneeWidth) / hipWidth > THRESHOLDS.kneeValgusRatio) {
-    cues.push('Push knees out');
-    hadValgus = true;
-    penalty += 15;
-  }
-
-  // Forward lean
-  if (hipAngle < 65) {
-    cues.push('Chest up');
-    hadLean = true;
-    penalty += 10;
-  }
-
-  // Depth feedback (only at bottom)
-  if (phase === 'bottom' && kneeAngle > settings.depthTarget + 15) {
-    cues.push('Go deeper');
-    penalty += 10;
-  }
-
-  // Depth bonus
-  if (phase === 'bottom' && kneeAngle <= settings.depthTarget) {
-    penalty -= 5; // reward good depth
-  }
-
-  formScore = Math.max(0, Math.min(100, formScore - penalty * 0.3 + 0.5));
-
+  let pen = 0;
+  if (hw > 1e-6 && (hw - kw)/hw > THRESH.valgus) { cues.push("knees out!"); hadValgus = true; pen += 15; }
+  if (ha < 65) { cues.push("chest up, stay tall"); hadLean = true; pen += 10; }
+  if (phase === "bottom" && ka > settings.depthTarget + 15) { cues.push("deeper! you got this"); pen += 10; }
+  if (phase === "bottom" && ka <= settings.depthTarget) pen -= 5;
+  formScore = Math.max(0, Math.min(100, formScore - pen * 0.3 + 0.5));
   return cues;
 }
 
-/* ---------- State machine ------------------------------------ */
-
-function updatePhase(kneeAngle) {
+// ── State Machine ────────────────────────────────────────────
+function updatePhase(ka) {
   const prev = phase;
+  if (phase === "standing" && ka < THRESH.descent) { phase = "descending"; repStartTime = Date.now(); }
+  else if (phase === "descending" && ka < THRESH.bottom) phase = "bottom";
+  else if (phase === "bottom" && ka > THRESH.ascent) phase = "ascending";
+  else if (phase === "ascending" && ka > THRESH.stand) phase = "standing";
 
-  if (phase === 'standing'   && kneeAngle < THRESHOLDS.descent)  phase = 'descending';
-  else if (phase === 'descending' && kneeAngle < THRESHOLDS.bottom) phase = 'bottom';
-  else if (phase === 'bottom'     && kneeAngle > THRESHOLDS.ascent) phase = 'ascending';
-  else if (phase === 'ascending'  && kneeAngle > THRESHOLDS.stand)  phase = 'standing';
-
-  // Rep completed
-  if (prev === 'ascending' && phase === 'standing') {
+  if (prev === "ascending" && phase === "standing") {
     repCount++;
-
-    // Score this rep
-    let repScore = 100;
-    if (minAngle > settings.depthTarget + 20) repScore -= 30;
-    else if (minAngle > settings.depthTarget + 10) repScore -= 15;
-    else if (minAngle <= settings.depthTarget) repScore += 5;
-    if (hadValgus) repScore -= 20;
-    if (hadLean) repScore -= 15;
-    repScore = Math.max(0, Math.min(100, repScore));
-
-    const depthLabel = minAngle <= settings.depthTarget ? 'parallel' :
-                       minAngle <= settings.depthTarget + 15 ? 'shallow' : 'high';
-
-    setData.push({
-      minAngle: Math.round(minAngle),
-      hadValgus,
-      hadLean,
-      score: repScore,
-      depthLabel,
-    });
-
-    // Reset per-rep state
-    minAngle = 180;
-    hadValgus = false;
-    hadLean = false;
-
-    // Feedback
+    const tempoMs = Date.now() - repStartTime;
+    let sc = 100;
+    if (minAngle > settings.depthTarget + 20) sc -= 30;
+    else if (minAngle > settings.depthTarget + 10) sc -= 15;
+    else if (minAngle <= settings.depthTarget) sc += 5;
+    if (hadValgus) sc -= 20;
+    if (hadLean) sc -= 15;
+    sc = Math.max(0, Math.min(100, sc));
+    setData.push({ minAngle: Math.round(minAngle), hadValgus, hadLean, score: sc, tempoMs });
+    minAngle = 180; hadValgus = false; hadLean = false;
     showRepFlash(repCount);
     haptic([30, 50, 30]);
-    say(repScore >= 80 ? `${repCount}` : `${repCount}, watch your form`);
+    say(sc >= 80 ? `${repCount}, sheesh` : `${repCount}, tighten up`);
   }
 }
 
-/* ---------- UI updates --------------------------------------- */
-
-function showCue(text) {
+// ── UI Updates ───────────────────────────────────────────────
+function showCue(t) {
   const now = Date.now();
-  if (text === lastCueText && now - lastCueTime < 2000) return;
-  lastCueText = text;
-  lastCueTime = now;
-
-  cueText.textContent = text;
-  cueOverlay.classList.remove('hidden');
-  haptic(50);
-
-  clearTimeout(cueOverlay._timeout);
-  cueOverlay._timeout = setTimeout(() => cueOverlay.classList.add('hidden'), 1500);
+  if (t === lastCueMsg && now - lastCueTime < 2000) return;
+  lastCueMsg = t; lastCueTime = now;
+  cueText.textContent = t; cueOverlay.classList.remove("hidden"); haptic(50);
+  clearTimeout(cueOverlay._t); cueOverlay._t = setTimeout(() => cueOverlay.classList.add("hidden"), 1500);
+}
+function showRepFlash(n) {
+  repFlashNum.textContent = n; repFlash.classList.remove("hidden");
+  clearTimeout(repFlash._t); repFlash._t = setTimeout(() => repFlash.classList.add("hidden"), 700);
+}
+function updateScoreRing(sc) {
+  const off = 163.36 - (sc / 100) * 163.36;
+  scoreRing.style.strokeDashoffset = off;
+  scoreRing.style.stroke = sc >= 75 ? "#22c55e" : sc >= 50 ? "#eab308" : "#ef4444";
+  scoreValue.textContent = Math.round(sc);
+}
+function setDot(cls) { hudStatus.querySelector(".hud-dot").className = "hud-dot " + cls; }
+function updateDepth(ka) {
+  if (phase === "bottom" || phase === "descending") {
+    if (ka <= settings.depthTarget) { depthEl.textContent = "Good"; depthCard.className = "stat-card stat-depth good"; }
+    else if (ka <= settings.depthTarget + 15) { depthEl.textContent = "Almost"; depthCard.className = "stat-card stat-depth ok"; }
+    else { depthEl.textContent = "High"; depthCard.className = "stat-card stat-depth shallow"; }
+  } else if (phase === "standing") { depthEl.textContent = "--"; depthCard.className = "stat-card stat-depth"; }
 }
 
-function showRepFlash(num) {
-  repFlashNum.textContent = num;
-  repFlash.classList.remove('hidden');
-  clearTimeout(repFlash._timeout);
-  repFlash._timeout = setTimeout(() => repFlash.classList.add('hidden'), 700);
+// ── Countdown ────────────────────────────────────────────────
+function doCountdown() {
+  if (!settings.countdown) return Promise.resolve();
+  return new Promise(resolve => {
+    countdownEl.classList.remove("hidden");
+    let n = 3;
+    countdownNum.textContent = n;
+    say("3");
+    const iv = setInterval(() => {
+      n--;
+      if (n > 0) { countdownNum.textContent = n; say(String(n)); }
+      else if (n === 0) { countdownNum.textContent = "GO"; say("Go"); haptic(200); }
+      else { clearInterval(iv); countdownEl.classList.add("hidden"); resolve(); }
+    }, 900);
+  });
 }
 
-function updateScoreRing(score) {
-  const circumference = 163.36;
-  const offset = circumference - (score / 100) * circumference;
-  scoreRing.style.strokeDashoffset = offset;
-
-  const color = score >= 75 ? '#22c55e' : score >= 50 ? '#eab308' : '#ef4444';
-  scoreRing.style.stroke = color;
-  scoreValue.textContent = Math.round(score);
-}
-
-function setStatusDot(cls) {
-  const dot = hudStatus.querySelector('.hud-dot');
-  dot.className = 'hud-dot ' + cls;
-}
-
-function updateDepthIndicator(kneeAngle) {
-  if (phase === 'bottom' || phase === 'descending') {
-    if (kneeAngle <= settings.depthTarget) {
-      depthEl.textContent = 'Good';
-      depthCard.className = 'stat-card stat-depth good';
-    } else if (kneeAngle <= settings.depthTarget + 15) {
-      depthEl.textContent = 'Almost';
-      depthCard.className = 'stat-card stat-depth ok';
-    } else {
-      depthEl.textContent = 'High';
-      depthCard.className = 'stat-card stat-depth shallow';
-    }
-  } else if (phase === 'standing') {
-    depthEl.textContent = '--';
-    depthCard.className = 'stat-card stat-depth';
-  }
-}
-
-/* ---------- Main detection loop ------------------------------ */
-
+// ── Main Loop ────────────────────────────────────────────────
 async function loop() {
   if (!running || paused) return;
-
   canvas.width = video.videoWidth || 720;
   canvas.height = video.videoHeight || 960;
-
   let result;
   try {
     result = landmarker.detectForVideo(video, performance.now());
@@ -615,40 +691,31 @@ async function loop() {
   }
 
   const lm = result?.landmarks?.[0];
-
   if (lm) {
     drawPose(lm);
-
-    const leftKnee  = calcAngle(lm[23], lm[25], lm[27]);
-    const rightKnee = calcAngle(lm[24], lm[26], lm[28]);
-    const kneeAngle = Math.min(leftKnee, rightKnee);
-
-    minAngle = Math.min(minAngle, kneeAngle);
-    updatePhase(kneeAngle);
-
-    const cues = analyzeForm(lm, kneeAngle);
+    const lk = ang(lm[23], lm[25], lm[27]), rk = ang(lm[24], lm[26], lm[28]);
+    const ka = Math.min(lk, rk);
+    minAngle = Math.min(minAngle, ka);
+    updatePhase(ka);
+    const cues = analyzeForm(lm, ka);
     if (cues.length) showCue(cues[0]);
-
-    // Update UI
-    repsEl.textContent = repCount;
-    phaseEl.textContent = phase;
-    angleEl.textContent = `${Math.round(kneeAngle)}°`;
-    updateDepthIndicator(kneeAngle);
-    updateScoreRing(formScore);
-
-    setStatusDot('active');
-    hudStatus.querySelector('span:last-child').textContent = 'Tracking';
+    repsEl.textContent = repCount; phaseEl.textContent = phase;
+    angleEl.textContent = Math.round(ka) + "\u00b0";
+    updateDepth(ka); updateScoreRing(formScore);
+    // Tempo
+    if (phase !== "standing" && repStartTime) {
+      const t = ((Date.now() - repStartTime) / 1000).toFixed(1);
+      tempoValue.textContent = t + "s"; hudTempo.classList.remove("hidden");
+    } else { hudTempo.classList.add("hidden"); }
+    setDot("active"); hudStatus.querySelector("span:last-child").textContent = "Tracking";
   } else {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    setStatusDot('warning');
-    hudStatus.querySelector('span:last-child').textContent = 'No person';
+    setDot("warning"); hudStatus.querySelector("span:last-child").textContent = "No person";
   }
-
   requestAnimationFrame(loop);
 }
 
-/* ---------- Timer -------------------------------------------- */
-
+// ── Timer ────────────────────────────────────────────────────
 function startTimer() {
   if (!timerStart) timerStart = Date.now();
   updateTimerUI();
@@ -680,8 +747,21 @@ function stopCameraStream() {
   cameraWrap.classList.remove('is-front');
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 }
+skipRest.addEventListener("click", endRest);
+addRest.addEventListener("click", () => { restRemaining += 30; });
 
-/* ---------- Workout lifecycle -------------------------------- */
+// ── Camera Permission Pre-Ask ────────────────────────────────
+function showCamPermission() {
+  D("camPermission").classList.remove("hidden");
+}
+D("camPermAllow").addEventListener("click", () => {
+  localStorage.setItem("postur_cam_asked", "1");
+  D("camPermission").classList.add("hidden");
+  doStartWorkout();
+});
+D("camPermCancel").addEventListener("click", () => {
+  D("camPermission").classList.add("hidden");
+});
 
 async function startWorkout({ skipCamera = false } = {}) {
   // Triggered from a real user gesture — unlock iOS audio + acquire wake lock now
@@ -845,60 +925,45 @@ function finishWorkout() {
     startNoCameraBtn.disabled = false;
     return;
   }
-
-  const avgDepth = Math.round(setData.reduce((s, r) => s + r.minAngle, 0) / setData.length);
-  const avgScore = Math.round(setData.reduce((s, r) => s + r.score, 0) / setData.length);
-  const valgusCount = setData.filter((r) => r.hadValgus).length;
-  const leanCount = setData.filter((r) => r.hadLean).length;
-
-  const grade = avgScore >= 80 ? 'A' : avgScore >= 60 ? 'B' : 'C';
-
   summaryGrade.textContent = grade;
-  summaryGrade.className = 'summary-grade' + (grade === 'B' ? ' b' : grade === 'C' ? ' c' : '');
+  summaryGrade.className = "summary-grade" + (grade === "B" ? " b" : grade === "C" ? " c" : "");
 
   summaryStats.innerHTML = `
-    <div class="summary-stat">
-      <span class="summary-stat-label">Reps</span>
-      <span class="summary-stat-value">${setData.length}</span>
-    </div>
-    <div class="summary-stat">
-      <span class="summary-stat-label">Avg Depth</span>
-      <span class="summary-stat-value">${avgDepth}°</span>
-    </div>
-    <div class="summary-stat">
-      <span class="summary-stat-label">Score</span>
-      <span class="summary-stat-value">${avgScore}</span>
-    </div>
-  `;
+    <div class="summary-stat"><span class="summary-stat-label">Reps</span><span class="summary-stat-value">${setData.length}</span></div>
+    <div class="summary-stat"><span class="summary-stat-label">Avg Depth</span><span class="summary-stat-value">${avgDepth}\u00b0</span></div>
+    <div class="summary-stat"><span class="summary-stat-label">Score</span><span class="summary-stat-value">${avgScore}</span></div>`;
+
+  summaryTempo.innerHTML = `
+    <div class="summary-tempo-row"><span>Avg Tempo</span><span>${avgTempo}s / rep</span></div>
+    <div class="summary-tempo-row"><span>Duration</span><span>${duration}</span></div>`;
 
   summaryReps.innerHTML = setData.map((r, i) => {
-    const color = r.score >= 80 ? 'var(--green)' : r.score >= 60 ? 'var(--yellow)' : 'var(--red)';
-    return `
-      <div class="summary-rep-row">
-        <span class="summary-rep-num">#${i + 1}</span>
-        <div class="summary-rep-bar">
-          <div class="summary-rep-fill" style="width:${r.score}%;background:${color}"></div>
-        </div>
-        <span class="summary-rep-score" style="color:${color}">${r.score}</span>
-      </div>`;
-  }).join('');
+    const c = r.score >= 80 ? "var(--green)" : r.score >= 60 ? "var(--yellow)" : "var(--red)";
+    const t = (r.tempoMs / 1000).toFixed(1);
+    return `<div class="summary-rep-row"><span class="summary-rep-num">#${i+1}</span><div class="summary-rep-bar"><div class="summary-rep-fill" style="width:${r.score}%;background:${c}"></div></div><span class="summary-rep-tempo">${t}s</span><span class="summary-rep-score" style="color:${c}">${r.score}</span></div>`;
+  }).join("");
 
-  summaryEl.classList.remove('hidden');
-
-  // Save to history
+  // Save history
   const sets = loadHistory();
-  sets.push({
-    date: new Date().toISOString(),
-    reps: setData.length,
-    avgDepth,
-    avgScore,
-    grade,
-    duration,
-    valgusCount,
-    leanCount,
-    repData: setData,
-  });
-  saveHistory(sets);
+  sets.push({ date: new Date().toISOString(), reps: setData.length, avgDepth, avgScore, grade, duration, repData: setData });
+  saveHist(sets);
+
+  // Streak
+  bumpStreak();
+
+  // Check PBs
+  const pbs = checkPB({ bestRep, avgScore, reps: setData.length });
+  if (pbs.length) {
+    pbText.textContent = pbs[0] + "!";
+    pbBanner.classList.remove("hidden");
+    fireConfetti();
+    haptic([50, 100, 50, 100, 50]);
+    say(settings.userName ? `new PB ${settings.userName}, sheesh!` : "new PB, sheesh!");
+  } else {
+    pbBanner.classList.add("hidden");
+    haptic([50, 100, 50]);
+    say(grade === "A" ? "you ate that!" : grade === "B" ? "solid work" : "we're leveling up");
+  }
 
   haptic([50, 100, 50]);
   say(grade === 'A' ? 'Great set!' : grade === 'B' ? 'Good work, keep improving' : 'Keep practicing your form');
@@ -933,7 +998,16 @@ function resetForNewSet() {
   manualMode = false;
 }
 
-/* ---------- Event listeners ---------------------------------- */
+// ── AI Coaching ─────────────────────────────────────────────
+const aiCoachBtn = D("aiCoachBtn");
+const aiCoachBtnText = D("aiCoachBtnText");
+const aiCoaching = D("aiCoaching");
+const aiCoachingText = D("aiCoachingText");
+
+aiCoachBtn.addEventListener("click", async () => {
+  if (!setData.length) return;
+  aiCoachBtnText.textContent = "Analyzing...";
+  aiCoachBtn.disabled = true;
 
 startBtn.addEventListener('click', () => startWorkout());
 startNoCameraBtn.addEventListener('click', () => startWorkout({ skipCamera: true }));
@@ -941,10 +1015,25 @@ pauseBtn.addEventListener('click', pauseWorkout);
 finishBtn.addEventListener('click', finishWorkout);
 newSetBtn.addEventListener('click', resetForNewSet);
 
-audioToggle.addEventListener('click', () => {
-  audioEnabled = !audioEnabled;
-  audioToggle.classList.toggle('muted', !audioEnabled);
-  if (!audioEnabled) window.speechSynthesis?.cancel();
+  try {
+    const res = await fetch("/api/coach", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ setData, avgScore, grade, reps: setData.length, avgDepth, avgTempo, userName: settings.userName || "" }),
+    });
+    const data = await res.json();
+    if (res.ok && data.feedback) {
+      aiCoachingText.textContent = data.feedback;
+      aiCoaching.classList.remove("hidden");
+      aiCoachBtn.classList.add("hidden");
+    } else {
+      aiCoachBtnText.textContent = "AI Coach unavailable";
+      setTimeout(() => { aiCoachBtnText.textContent = "Get AI Coaching"; aiCoachBtn.disabled = false; }, 3000);
+    }
+  } catch {
+    aiCoachBtnText.textContent = "AI Coach unavailable";
+    setTimeout(() => { aiCoachBtnText.textContent = "Get AI Coaching"; aiCoachBtn.disabled = false; }, 3000);
+  }
 });
 
 manualRepBtn.addEventListener('click', () => {
