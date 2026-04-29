@@ -868,6 +868,54 @@ html, body {
 
 .summary-actions { padding-top: 4px; }
 
+/* AI Coaching */
+.btn-ai {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: white;
+  border: none;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 14px 16px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  margin-bottom: 8px;
+  transition: opacity 0.15s;
+}
+
+.btn-ai:active { opacity: 0.85; }
+.btn-ai:disabled { opacity: 0.5; pointer-events: none; }
+
+.ai-coaching {
+  background: linear-gradient(135deg, rgba(99,102,241,0.12), rgba(139,92,246,0.08));
+  border: 1px solid rgba(99,102,241,0.3);
+  border-radius: var(--radius-sm);
+  padding: 14px;
+  margin-bottom: 12px;
+  animation: fadeSlideUp 0.4s ease-out;
+}
+
+.ai-coaching-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  color: #a5b4fc;
+  font-size: 13px;
+}
+
+.ai-coaching p {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  white-space: pre-line;
+}
+
 /* ============================================================
    PANELS
    ============================================================ */

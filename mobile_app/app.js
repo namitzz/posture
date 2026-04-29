@@ -528,6 +528,10 @@ async function startWorkout() {
   camFlipBtn.classList.remove("hidden");
   summaryEl.classList.add("hidden");
   restTimerEl.classList.add("hidden");
+  aiCoaching.classList.add("hidden");
+  aiCoachBtn.classList.remove("hidden");
+  aiCoachBtnText.textContent = "Get AI Coaching";
+  aiCoachBtn.disabled = false;
 
   startTimer(); haptic(100); say("Let's go");
   loop();
@@ -613,6 +617,43 @@ function resetForNewSet() {
   updateScoreRing(0); hudTimer.textContent = "00:00";
   setDot(""); hudStatus.querySelector("span:last-child").textContent = "Ready";
 }
+
+// ── AI Coaching ─────────────────────────────────────────────
+const aiCoachBtn = D("aiCoachBtn");
+const aiCoachBtnText = D("aiCoachBtnText");
+const aiCoaching = D("aiCoaching");
+const aiCoachingText = D("aiCoachingText");
+
+aiCoachBtn.addEventListener("click", async () => {
+  if (!setData.length) return;
+  aiCoachBtnText.textContent = "Analyzing...";
+  aiCoachBtn.disabled = true;
+
+  const avgScore = Math.round(setData.reduce((s,r) => s + r.score, 0) / setData.length);
+  const avgDepth = Math.round(setData.reduce((s,r) => s + r.minAngle, 0) / setData.length);
+  const avgTempo = Math.round(setData.reduce((s,r) => s + r.tempoMs, 0) / setData.length / 100) / 10;
+  const grade = avgScore >= 80 ? "A" : avgScore >= 60 ? "B" : "C";
+
+  try {
+    const res = await fetch("/api/coach", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ setData, avgScore, grade, reps: setData.length, avgDepth, avgTempo }),
+    });
+    const data = await res.json();
+    if (res.ok && data.feedback) {
+      aiCoachingText.textContent = data.feedback;
+      aiCoaching.classList.remove("hidden");
+      aiCoachBtn.classList.add("hidden");
+    } else {
+      aiCoachBtnText.textContent = "AI Coach unavailable";
+      setTimeout(() => { aiCoachBtnText.textContent = "Get AI Coaching"; aiCoachBtn.disabled = false; }, 3000);
+    }
+  } catch {
+    aiCoachBtnText.textContent = "AI Coach unavailable";
+    setTimeout(() => { aiCoachBtnText.textContent = "Get AI Coaching"; aiCoachBtn.disabled = false; }, 3000);
+  }
+});
 
 // ── Share ────────────────────────────────────────────────────
 shareBtn.addEventListener("click", async () => {
