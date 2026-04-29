@@ -590,8 +590,6 @@ function startTimer() {
   updateTimerUI();
   stopTimer();
   timerInterval = setInterval(() => {
-    updateTimerUI();
-  timerInterval = setInterval(() => {
     hudTimer.textContent = fmtTime(elapsedMsBeforePause + (Date.now() - timerStart));
   }, 1000);
 }
@@ -621,7 +619,7 @@ function stopCameraStream() {
 
 /* ---------- Workout lifecycle -------------------------------- */
 
-async function startWorkout() {
+async function startWorkout({ skipCamera = false } = {}) {
   startBtn.querySelector('span').textContent = 'Initializing AI coach...';
   startBtn.disabled = true;
   startNoCameraBtn.disabled = true;
@@ -805,63 +803,6 @@ function resetForNewSet() {
   manualMode = false;
 }
 
-function addManualRep() {
-  if (!running || paused || !noCameraMode) return;
-  repCount += 1;
-  const repScore = 85;
-  setData.push({
-    minAngle: settings.depthTarget,
-    hadValgus: false,
-    hadLean: false,
-    score: repScore,
-    depthLabel: 'manual',
-  });
-  repsEl.textContent = repCount;
-  phaseEl.textContent = 'manual';
-  angleEl.textContent = '--';
-  showRepFlash(repCount);
-  haptic(30);
-  updateScoreRing(repScore);
-}
-
-function addManualRep() {
-  if (!running || paused || !noCameraMode) return;
-  repCount += 1;
-  const repScore = 85;
-  setData.push({
-    minAngle: settings.depthTarget,
-    hadValgus: false,
-    hadLean: false,
-    score: repScore,
-    depthLabel: 'manual',
-  });
-  repsEl.textContent = repCount;
-  phaseEl.textContent = 'manual';
-  angleEl.textContent = '--';
-  showRepFlash(repCount);
-  haptic(30);
-  updateScoreRing(repScore);
-}
-
-function addManualRep() {
-  if (!running || paused || !noCameraMode) return;
-  repCount += 1;
-  const repScore = 85;
-  setData.push({
-    minAngle: settings.depthTarget,
-    hadValgus: false,
-    hadLean: false,
-    score: repScore,
-    depthLabel: 'manual',
-  });
-  repsEl.textContent = repCount;
-  phaseEl.textContent = 'manual';
-  angleEl.textContent = '--';
-  showRepFlash(repCount);
-  haptic(30);
-  updateScoreRing(repScore);
-}
-
 /* ---------- Event listeners ---------------------------------- */
 
 startBtn.addEventListener('click', () => startWorkout());
@@ -869,7 +810,6 @@ startNoCameraBtn.addEventListener('click', () => startWorkout({ skipCamera: true
 pauseBtn.addEventListener('click', pauseWorkout);
 finishBtn.addEventListener('click', finishWorkout);
 newSetBtn.addEventListener('click', resetForNewSet);
-manualRepBtn.addEventListener('click', addManualRep);
 
 audioToggle.addEventListener('click', () => {
   audioEnabled = !audioEnabled;

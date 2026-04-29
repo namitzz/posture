@@ -203,7 +203,7 @@ Please give a short, 2–3 sentence feedback summary like a human strength coach
             Provide 2-3 specific, actionable recommendations."""
             
             response = self.client.chat.completions.create(
-                model="gpt-4",
+                model=self.FALLBACK_MODEL,
                 messages=[
                     {
                         "role": "system",
