@@ -14,6 +14,5 @@ python-dotenv==1.0.0
 pytest==7.4.3
 pytest-cov==4.1.0
 
-# Optional: AI Coaching (requires API key)
-# Uncomment the following line to enable AI-powered coaching with GPT
-# openai>=1.50.0
+# AI Coaching (requires OPENAI_API_KEY environment variable)
+openai>=1.50.0

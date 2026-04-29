@@ -1,10 +1,4 @@
 let FilesetResolver, PoseLandmarker;
-// Backward-compatibility shim:
-// Some previously deployed bundles referenced these legacy globals.
-// Keeping them defined prevents hard runtime crashes on mixed/stale caches.
-const useLegacyPoseFallback = false;
-let legacyPose = null;
-let legacyPoseResults = null;
 const MEDIAPIPE_VERSION = '0.10.14';
 const MEDIAPIPE_CDN_TIMEOUT_MS = 8000;
 const MEDIAPIPE_BUNDLES = [
@@ -314,7 +308,9 @@ function unlockAudio() {
     u.volume = 0;
     window.speechSynthesis.speak(u);
     audioUnlocked = true;
-  } catch {}
+  } catch (err) {
+    console.warn('[Audio] Failed to unlock audio context:', err);
+  }
 }
 
 /* ---------- Toast -------------------------------------------- */
@@ -738,7 +734,8 @@ D("weeklyDigestBtn").addEventListener("click", async () => {
       D("weeklyDigestBtnText").textContent = "Digest unavailable";
       setTimeout(() => { D("weeklyDigestBtnText").textContent = "Get Weekly AI Digest"; D("weeklyDigestBtn").disabled = false; }, 3000);
     }
-  } catch {
+  } catch (err) {
+    console.warn('[WeeklyDigest] Request failed:', err);
     D("weeklyDigestBtnText").textContent = "Digest unavailable";
     setTimeout(() => { D("weeklyDigestBtnText").textContent = "Get Weekly AI Digest"; D("weeklyDigestBtn").disabled = false; }, 3000);
   }
@@ -753,7 +750,9 @@ async function loadMediaPipe() {
     FilesetResolver = mp.FilesetResolver;
     PoseLandmarker = mp.PoseLandmarker;
     return;
-  } catch {}
+  } catch (err) {
+    console.warn('[MediaPipe] ES module import failed, trying UMD fallback:', err);
+  }
   // Fallback: load via script tag (UMD)
   if (!FilesetResolver) {
     await new Promise((resolve, reject) => {
@@ -1096,7 +1095,7 @@ function showCamPermission() {
 D("camPermAllow").addEventListener("click", () => {
   localStorage.setItem("postur_cam_asked", "1");
   D("camPermission").classList.add("hidden");
-  doStartWorkout();
+  startWorkout();
 });
 D("camPermCancel").addEventListener("click", () => {
   D("camPermission").classList.add("hidden");
@@ -1344,16 +1343,22 @@ const aiCoachBtnText = D("aiCoachBtnText");
 const aiCoaching = D("aiCoaching");
 const aiCoachingText = D("aiCoachingText");
 
-aiCoachBtn.addEventListener("click", async () => {
-  if (!setData.length) return;
-  aiCoachBtnText.textContent = "Analyzing...";
-  aiCoachBtn.disabled = true;
-
-startBtn.addEventListener('click', () => startWorkout());
+startBtn.addEventListener('click', () => {
+  if (!localStorage.getItem('postur_cam_asked')) {
+    showCamPermission();
+  } else {
+    startWorkout();
+  }
+});
 startNoCameraBtn.addEventListener('click', () => startWorkout({ skipCamera: true }));
 pauseBtn.addEventListener('click', pauseWorkout);
 finishBtn.addEventListener('click', finishWorkout);
 newSetBtn.addEventListener('click', resetForNewSet);
+
+aiCoachBtn.addEventListener("click", async () => {
+  if (!setData.length) return;
+  aiCoachBtnText.textContent = "Analyzing...";
+  aiCoachBtn.disabled = true;
 
   try {
     const res = await fetch("/api/coach", {
@@ -1370,7 +1375,8 @@ newSetBtn.addEventListener('click', resetForNewSet);
       aiCoachBtnText.textContent = "AI Coach unavailable";
       setTimeout(() => { aiCoachBtnText.textContent = "Get AI Coaching"; aiCoachBtn.disabled = false; }, 3000);
     }
-  } catch {
+  } catch (err) {
+    console.warn('[AICoach] Request failed:', err);
     aiCoachBtnText.textContent = "AI Coach unavailable";
     setTimeout(() => { aiCoachBtnText.textContent = "Get AI Coaching"; aiCoachBtn.disabled = false; }, 3000);
   }
