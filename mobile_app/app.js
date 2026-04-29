@@ -201,6 +201,7 @@ let setData = [], timerStart = 0, timerInterval = null;
 let lastCueTime = 0, lastCueMsg = "", formScore = 100;
 let repStartTime = 0;
 let restInterval = null, restRemaining = 0;
+let standingHipY = null, standingKneeY = null, depthGuideY = null;
 const THRESH = { descent:170, bottom:150, ascent:155, stand:168, valgus:0.12 };
 
 // ── Name Screen ──────────────────────────────────────────────
@@ -287,26 +288,18 @@ setTimeout(hideSplash, 3500);
 
 /* ---------- Wake Lock --------------------------------------- */
 
-async function acquireWakeLock() {
-  if (!('wakeLock' in navigator)) return;
-  try {
-    wakeLock = await navigator.wakeLock.request('screen');
-    wakeLock.addEventListener('release', () => { wakeLock = null; });
-  } catch (err) {
-    console.warn('[WakeLock] Could not acquire:', err);
-  }
-}
-
-async function releaseWakeLock() {
-  if (!wakeLock) return;
-  try { await wakeLock.release(); } catch {}
-  wakeLock = null;
-}
-
-// Re-acquire after the page comes back from being hidden
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && running && !paused && !wakeLock) {
-    acquireWakeLock();
+D("historyBtn").addEventListener("click", () => { renderHistory(); openPanel(D("historyPanel")); });
+D("closeHistory").addEventListener("click", () => closePanel(D("historyPanel")));
+D("streakBtn").addEventListener("click", () => { renderRecords(); openPanel(D("recordsPanel")); });
+D("closeRecords").addEventListener("click", () => closePanel(D("recordsPanel")));
+D("settingsBtn").addEventListener("click", () => openPanel(D("settingsPanel")));
+D("closeSettings").addEventListener("click", () => closePanel(D("settingsPanel")));
+D("openGuide").addEventListener("click", () => { closePanel(D("settingsPanel")); setTimeout(()=>openPanel(D("guidePanel")),300); });
+D("closeGuide").addEventListener("click", () => closePanel(D("guidePanel")));
+D("clearDataBtn").addEventListener("click", () => {
+  if (confirm("Clear all workout data? This cannot be undone.")) {
+    localStorage.removeItem("postur_history"); localStorage.removeItem("postur_records"); localStorage.removeItem("postur_streak"); localStorage.removeItem("postur_achievements");
+    alert("Data cleared.");
   }
 });
 
@@ -443,9 +436,325 @@ function fireConfetti() {
   frame = requestAnimationFrame(draw);
 }
 
-async function initLandmarker() {
-  await ensureMediaPipeLoaded();
+// ── Achievements ────────────────────────────────────────────
+const ACHIEVEMENTS = [
+  { id: "first_set", name: "First Steps", desc: "Complete your first set", icon: "\u{1F476}", bg: "var(--green-dim)" },
+  { id: "perfect_rep", name: "Flawless", desc: "Score 100 on a single rep", icon: "\u{1F48E}", bg: "var(--yellow-dim)" },
+  { id: "clean_5", name: "Clean Machine", desc: "5 reps with no form issues", icon: "\u{2728}", bg: "var(--green-dim)" },
+  { id: "ten_rep_set", name: "Marathon", desc: "Complete a 10-rep set", icon: "\u{1F3C3}", bg: "var(--orange-dim)" },
+  { id: "streak_3", name: "On a Roll", desc: "3-day workout streak", icon: "\u{1F525}", bg: "var(--orange-dim)" },
+  { id: "streak_7", name: "Locked In", desc: "7-day workout streak", icon: "\u{1F512}", bg: "var(--red-dim)" },
+  { id: "avg_90", name: "Elite Form", desc: "Average score 90+ in a set", icon: "\u{1F451}", bg: "var(--yellow-dim)" },
+  { id: "reps_50", name: "Grinder", desc: "50 lifetime reps", icon: "\u{1F4AA}", bg: "var(--orange-dim)" },
+  { id: "reps_100", name: "Centurion", desc: "100 lifetime reps", icon: "\u{1F3C6}", bg: "var(--green-dim)" },
+];
 
+function getAchievements() { return loadJ("postur_achievements"); }
+
+function checkAchievements(setResult) {
+  const a = getAchievements();
+  const hist = loadHistory();
+  const streak = getStreak();
+  const lifetimeReps = hist.reduce((s, h) => s + h.reps, 0);
+  const lifetimeSets = hist.length;
+  const cleanInSet = setResult.setData.filter(r => !r.hadValgus && !r.hadLean && r.minAngle <= settings.depthTarget + 15).length;
+  const bestRepInSet = Math.max(...setResult.setData.map(r => r.score));
+
+  const ctx = { lifetimeSets, lifetimeReps, cleanInSet, bestRepInSet, avgScoreInSet: setResult.avgScore, repsInSet: setResult.reps, currentStreak: streak.current || 0 };
+  const checks = {
+    first_set: () => ctx.lifetimeSets >= 1,
+    perfect_rep: () => ctx.bestRepInSet >= 100,
+    clean_5: () => ctx.cleanInSet >= 5,
+    ten_rep_set: () => ctx.repsInSet >= 10,
+    streak_3: () => ctx.currentStreak >= 3,
+    streak_7: () => ctx.currentStreak >= 7,
+    avg_90: () => ctx.avgScoreInSet >= 90,
+    reps_50: () => ctx.lifetimeReps >= 50,
+    reps_100: () => ctx.lifetimeReps >= 100,
+  };
+
+  const newUnlocks = [];
+  for (const ach of ACHIEVEMENTS) {
+    if (a[ach.id]) continue;
+    if (checks[ach.id] && checks[ach.id]()) {
+      a[ach.id] = { unlocked: true, date: new Date().toISOString() };
+      newUnlocks.push(ach);
+    }
+  }
+  saveJ("postur_achievements", a);
+  return newUnlocks;
+}
+
+function showAchievementToast(ach) {
+  const toast = D("achieveToast");
+  D("achieveToastIcon").textContent = ach.icon;
+  D("achieveToastTitle").textContent = ach.name;
+  D("achieveToastDesc").textContent = ach.desc;
+  toast.classList.remove("hidden");
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => toast.classList.add("hidden"), 3500);
+}
+
+function renderAchievements() {
+  const a = getAchievements();
+  const unlocked = ACHIEVEMENTS.filter(ach => a[ach.id]);
+  D("achieveSummary").innerHTML = `
+    <div><div class="achieve-summary-count">${unlocked.length}/${ACHIEVEMENTS.length}</div><div class="achieve-summary-label">unlocked</div></div>
+    <div class="achieve-summary-bar"><div class="achieve-summary-fill" style="width:${(unlocked.length / ACHIEVEMENTS.length * 100)}%"></div></div>`;
+  D("achieveGrid").innerHTML = ACHIEVEMENTS.map(ach => {
+    const u = a[ach.id];
+    return `<div class="achieve-card${u ? "" : " locked"}"><div class="achieve-card-icon" style="background:${ach.bg}">${ach.icon}</div><div class="achieve-card-info"><span class="achieve-card-name">${ach.name}</span><span class="achieve-card-desc">${ach.desc}</span>${u ? `<span class="achieve-card-date">${new Date(u.date).toLocaleDateString()}</span>` : ""}</div></div>`;
+  }).join("");
+}
+
+D("achieveBtn").addEventListener("click", () => { renderAchievements(); openPanel(D("achievePanel")); });
+D("closeAchieve").addEventListener("click", () => closePanel(D("achievePanel")));
+
+// ── Analytics ───────────────────────────────────────────────
+function renderAnalytics() {
+  renderTotalStats();
+  drawScoreTrend();
+  renderWeekHeatmap();
+  drawIssuesChart();
+}
+
+function renderTotalStats() {
+  const hist = loadHistory();
+  const totalSets = hist.length;
+  const totalReps = hist.reduce((s, h) => s + h.reps, 0);
+  const avgScore = totalSets ? Math.round(hist.reduce((s, h) => s + h.avgScore, 0) / totalSets) : 0;
+  const streak = getStreak();
+  D("analyticsTotals").innerHTML = [
+    { v: totalReps, l: "Total Reps" }, { v: totalSets, l: "Total Sets" },
+    { v: avgScore || "--", l: "Avg Score" }, { v: (streak.best || 0) + "d", l: "Best Streak" },
+  ].map(s => `<div class="analytics-stat"><span class="analytics-stat-value">${s.v}</span><span class="analytics-stat-label">${s.l}</span></div>`).join("");
+}
+
+function drawScoreTrend() {
+  const c = D("trendCanvas");
+  const dpr = window.devicePixelRatio || 1;
+  c.width = c.clientWidth * dpr;
+  c.height = c.clientHeight * dpr;
+  const cx = c.getContext("2d");
+  cx.scale(dpr, dpr);
+  const w = c.clientWidth, h = c.clientHeight;
+  const hist = loadHistory().slice(-20);
+  if (!hist.length) { cx.fillStyle = "rgba(255,255,255,0.3)"; cx.font = "13px Inter"; cx.textAlign = "center"; cx.fillText("No data yet", w / 2, h / 2); return; }
+
+  const pad = { t: 12, r: 12, b: 24, l: 32 };
+  const cw = w - pad.l - pad.r, ch = h - pad.t - pad.b;
+
+  cx.strokeStyle = "rgba(255,255,255,0.06)"; cx.lineWidth = 1;
+  for (const v of [40, 60, 80, 100]) {
+    const y = pad.t + ch - ((v - 20) / 80) * ch;
+    cx.beginPath(); cx.moveTo(pad.l, y); cx.lineTo(w - pad.r, y); cx.stroke();
+    cx.fillStyle = "rgba(255,255,255,0.25)"; cx.font = "9px Inter"; cx.textAlign = "right";
+    cx.fillText(v, pad.l - 4, y + 3);
+  }
+
+  const pts = hist.map((s, i) => ({
+    x: pad.l + (cw / Math.max(1, hist.length - 1)) * i,
+    y: pad.t + ch - ((Math.max(20, Math.min(100, s.avgScore)) - 20) / 80) * ch,
+    score: s.avgScore,
+  }));
+
+  const grad = cx.createLinearGradient(0, pad.t, 0, pad.t + ch);
+  grad.addColorStop(0, "rgba(34, 197, 94, 0.15)");
+  grad.addColorStop(1, "rgba(34, 197, 94, 0)");
+  cx.beginPath();
+  cx.moveTo(pts[0].x, pad.t + ch);
+  pts.forEach(p => cx.lineTo(p.x, p.y));
+  cx.lineTo(pts[pts.length - 1].x, pad.t + ch);
+  cx.fillStyle = grad; cx.fill();
+
+  cx.beginPath();
+  pts.forEach((p, i) => i === 0 ? cx.moveTo(p.x, p.y) : cx.lineTo(p.x, p.y));
+  cx.strokeStyle = "#22c55e"; cx.lineWidth = 2; cx.lineJoin = "round"; cx.stroke();
+
+  pts.forEach(p => {
+    cx.beginPath(); cx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+    cx.fillStyle = p.score >= 80 ? "#22c55e" : p.score >= 60 ? "#eab308" : "#ef4444"; cx.fill();
+  });
+}
+
+function renderWeekHeatmap() {
+  const hist = loadHistory();
+  const now = new Date();
+  const dayOfWeek = (now.getDay() + 6) % 7;
+  const mondayMs = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dayOfWeek).getTime();
+  const labels = ["M", "T", "W", "T", "F", "S", "S"];
+
+  D("weekHeatmap").innerHTML = labels.map((l, i) => {
+    const dayStart = mondayMs + i * 86400000;
+    const dayEnd = dayStart + 86400000;
+    const daySets = hist.filter(s => { const t = new Date(s.date).getTime(); return t >= dayStart && t < dayEnd; });
+    let cls = "";
+    if (daySets.length) {
+      const best = Math.max(...daySets.map(s => s.avgScore));
+      cls = best >= 80 ? " active" : best >= 60 ? " grade-b" : " grade-c";
+    }
+    return `<div class="week-day"><span class="week-day-label">${l}</span><div class="week-day-dot${cls}"></div></div>`;
+  }).join("");
+}
+
+function drawIssuesChart() {
+  const c = D("issuesCanvas");
+  const dpr = window.devicePixelRatio || 1;
+  c.width = c.clientWidth * dpr;
+  c.height = c.clientHeight * dpr;
+  const cx = c.getContext("2d");
+  cx.scale(dpr, dpr);
+  const w = c.clientWidth, h = c.clientHeight;
+  const hist = loadHistory();
+  let totalReps = 0, valgusCount = 0, leanCount = 0, shallowCount = 0;
+  hist.forEach(s => (s.repData || []).forEach(r => {
+    totalReps++;
+    if (r.hadValgus) valgusCount++;
+    if (r.hadLean) leanCount++;
+    if (r.minAngle > (settings.depthTarget || 90) + 15) shallowCount++;
+  }));
+  if (!totalReps) { cx.fillStyle = "rgba(255,255,255,0.3)"; cx.font = "13px Inter"; cx.textAlign = "center"; cx.fillText("No data yet", w / 2, h / 2); return; }
+
+  const bars = [
+    { label: "Knee Valgus", pct: valgusCount / totalReps, color: "#ef4444" },
+    { label: "Forward Lean", pct: leanCount / totalReps, color: "#eab308" },
+    { label: "Shallow Depth", pct: shallowCount / totalReps, color: "#f97316" },
+  ];
+  const barH = 22, gap = 16, startY = 20, labelW = 90, barStart = labelW + 8, maxBarW = w - barStart - 50;
+
+  bars.forEach((b, i) => {
+    const y = startY + i * (barH + gap);
+    cx.fillStyle = "rgba(255,255,255,0.4)"; cx.font = "12px Inter"; cx.textAlign = "right";
+    cx.fillText(b.label, labelW, y + barH / 2 + 4);
+    cx.fillStyle = "rgba(255,255,255,0.06)";
+    cx.beginPath(); cx.rect(barStart, y, maxBarW, barH); cx.fill();
+    const bw = Math.max(2, b.pct * maxBarW);
+    cx.fillStyle = b.color;
+    cx.beginPath(); cx.rect(barStart, y, bw, barH); cx.fill();
+    cx.fillStyle = "rgba(255,255,255,0.6)"; cx.font = "bold 11px Inter"; cx.textAlign = "left";
+    cx.fillText(Math.round(b.pct * 100) + "%", barStart + bw + 6, y + barH / 2 + 4);
+  });
+}
+
+D("analyticsBtn").addEventListener("click", () => { renderAnalytics(); openPanel(D("analyticsPanel")); });
+D("closeAnalytics").addEventListener("click", () => closePanel(D("analyticsPanel")));
+
+// ── Warm-up ─────────────────────────────────────────────────
+const WARMUP_EX = [
+  { name: "Bodyweight Squats", dur: 30, desc: "Slow, controlled reps", fig: '<svg width="60" height="80" viewBox="0 0 60 80" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round"><circle cx="30" cy="8" r="6"/><line x1="30" y1="14" x2="30" y2="40"/><line x1="16" y1="28" x2="44" y2="28"/><line x1="30" y1="40" x2="18" y2="56"/><line x1="30" y1="40" x2="42" y2="56"/><line x1="18" y1="56" x2="14" y2="74"/><line x1="42" y1="56" x2="46" y2="74"/></svg>' },
+  { name: "Leg Swings", dur: 30, desc: "Forward & back, each leg", fig: '<svg width="60" height="80" viewBox="0 0 60 80" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round"><circle cx="30" cy="8" r="6"/><line x1="30" y1="14" x2="30" y2="42"/><line x1="16" y1="26" x2="44" y2="26"/><line x1="30" y1="42" x2="22" y2="70"/><line x1="30" y1="42" x2="48" y2="58"/></svg>' },
+  { name: "Hip Circles", dur: 30, desc: "Both directions", fig: '<svg width="60" height="80" viewBox="0 0 60 80" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round"><circle cx="30" cy="8" r="6"/><line x1="30" y1="14" x2="30" y2="42"/><line x1="16" y1="26" x2="44" y2="26"/><ellipse cx="30" cy="38" rx="12" ry="8" stroke-dasharray="4 3"/><line x1="30" y1="42" x2="20" y2="70"/><line x1="30" y1="42" x2="40" y2="70"/></svg>' },
+  { name: "Ankle Rocks", dur: 20, desc: "Rock forward over toes", fig: '<svg width="60" height="80" viewBox="0 0 60 80" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round"><circle cx="30" cy="8" r="6"/><line x1="30" y1="14" x2="30" y2="42"/><line x1="16" y1="26" x2="44" y2="26"/><line x1="30" y1="42" x2="22" y2="62"/><line x1="30" y1="42" x2="38" y2="62"/><line x1="22" y1="62" x2="18" y2="74"/><line x1="38" y1="62" x2="42" y2="74"/><path d="M14 74 L48 74" stroke-dasharray="4 3"/></svg>' },
+];
+
+let warmupInterval = null, warmupIdx = 0;
+
+function startWarmup() {
+  warmupIdx = 0;
+  D("warmupOverlay").classList.remove("hidden");
+  runWarmupExercise(0);
+}
+
+function runWarmupExercise(idx) {
+  if (idx >= WARMUP_EX.length) { endWarmup(); return; }
+  warmupIdx = idx;
+  const ex = WARMUP_EX[idx];
+  D("warmupExName").textContent = ex.name;
+  D("warmupExDesc").textContent = ex.desc;
+  D("warmupFigure").innerHTML = ex.fig;
+  D("warmupProgress").textContent = `${idx + 1} / ${WARMUP_EX.length}`;
+  let remaining = ex.dur;
+  const total = remaining;
+  const circ = 326.73;
+  D("warmupTime").textContent = remaining;
+  D("warmupRing").style.strokeDashoffset = "0";
+  say(ex.name);
+
+  clearInterval(warmupInterval);
+  warmupInterval = setInterval(() => {
+    remaining--;
+    D("warmupTime").textContent = Math.max(0, remaining);
+    D("warmupRing").style.strokeDashoffset = ((total - remaining) / total * circ).toString();
+    if (remaining <= 0) {
+      clearInterval(warmupInterval);
+      haptic([50, 100]);
+      if (idx + 1 < WARMUP_EX.length) {
+        say("next");
+        runWarmupExercise(idx + 1);
+      } else {
+        say("warm-up done, let's cook");
+        endWarmup();
+      }
+    }
+  }, 1000);
+}
+
+function endWarmup() {
+  clearInterval(warmupInterval);
+  D("warmupOverlay").classList.add("hidden");
+}
+
+D("warmupBtn").addEventListener("click", startWarmup);
+D("warmupSkipEx").addEventListener("click", () => { clearInterval(warmupInterval); runWarmupExercise(warmupIdx + 1); });
+D("warmupCancel").addEventListener("click", endWarmup);
+
+// ── Weekly Digest ───────────────────────────────────────────
+D("weeklyDigestBtn").addEventListener("click", async () => {
+  const hist = loadHistory();
+  const weekAgo = Date.now() - 7 * 86400000;
+  const weekSets = hist.filter(s => new Date(s.date).getTime() >= weekAgo);
+  if (!weekSets.length) {
+    D("weeklyDigestBtnText").textContent = "No sets this week";
+    setTimeout(() => { D("weeklyDigestBtnText").textContent = "Get Weekly AI Digest"; }, 2500);
+    return;
+  }
+
+  D("weeklyDigestBtnText").textContent = "Analyzing week...";
+  D("weeklyDigestBtn").disabled = true;
+
+  const totalReps = weekSets.reduce((s, h) => s + h.reps, 0);
+  const avgScore = Math.round(weekSets.reduce((s, h) => s + h.avgScore, 0) / weekSets.length);
+  const scores = weekSets.map(s => s.avgScore);
+  let valgus = 0, lean = 0, shallow = 0, total = 0;
+  weekSets.forEach(s => (s.repData || []).forEach(r => { total++; if (r.hadValgus) valgus++; if (r.hadLean) lean++; if (r.minAngle > 105) shallow++; }));
+  const streak = getStreak();
+
+  try {
+    const res = await fetch("/api/coach", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "weekly_digest",
+        weekData: { totalSets: weekSets.length, totalReps, avgScore, scoreProgression: scores, issueBreakdown: { valgus: total ? Math.round(valgus/total*100) : 0, lean: total ? Math.round(lean/total*100) : 0, shallow: total ? Math.round(shallow/total*100) : 0 }, bestScore: Math.max(...scores), streak: streak.current || 0, daysActive: new Set(weekSets.map(s => new Date(s.date).toDateString())).size },
+        userName: settings.userName || "",
+      }),
+    });
+    const data = await res.json();
+    if (res.ok && data.feedback) {
+      D("weeklyDigestText").textContent = data.feedback;
+      D("weeklyDigest").classList.remove("hidden");
+      D("weeklyDigestBtn").classList.add("hidden");
+    } else {
+      D("weeklyDigestBtnText").textContent = "Digest unavailable";
+      setTimeout(() => { D("weeklyDigestBtnText").textContent = "Get Weekly AI Digest"; D("weeklyDigestBtn").disabled = false; }, 3000);
+    }
+  } catch {
+    D("weeklyDigestBtnText").textContent = "Digest unavailable";
+    setTimeout(() => { D("weeklyDigestBtnText").textContent = "Get Weekly AI Digest"; D("weeklyDigestBtn").disabled = false; }, 3000);
+  }
+});
+
+// ── MediaPipe ────────────────────────────────────────────────
+async function loadMediaPipe() {
+  if (FilesetResolver) return;
+  // Try ES module dynamic import first
+  try {
+    const mp = await import("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12/+esm");
+    FilesetResolver = mp.FilesetResolver;
+    PoseLandmarker = mp.PoseLandmarker;
+    return;
+  } catch {}
+  // Fallback: load via script tag (UMD)
   if (!FilesetResolver) {
     await new Promise((resolve, reject) => {
       const s = document.createElement("script");
@@ -590,6 +899,35 @@ function drawPose(lm) {
     ctx.beginPath(); ctx.arc(p.x*w, p.y*h, 8, 0, Math.PI*2);
     ctx.fillStyle = hadValgus ? "rgba(239,68,68,0.4)" : "rgba(34,197,94,0.3)"; ctx.fill();
   }
+  drawDepthGuide(w);
+}
+
+function calibrateDepthGuide(lm) {
+  if (depthGuideY !== null || phase !== "standing") return;
+  const lh = lm[23], rh = lm[24], lk = lm[25], rk = lm[26];
+  if (!lh || !rh || !lk || !rk) return;
+  if (lh.visibility < 0.5 || rh.visibility < 0.5 || lk.visibility < 0.5 || rk.visibility < 0.5) return;
+  standingHipY = (lh.y + rh.y) / 2;
+  standingKneeY = (lk.y + rk.y) / 2;
+  depthGuideY = standingKneeY;
+}
+
+function drawDepthGuide(w) {
+  if (depthGuideY === null || !running) return;
+  const y = depthGuideY * canvas.height;
+  ctx.save();
+  ctx.setLineDash([8, 6]);
+  ctx.strokeStyle = "rgba(34, 197, 94, 0.45)";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(0, y);
+  ctx.lineTo(w, y);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.font = "bold 10px Inter, sans-serif";
+  ctx.fillStyle = "rgba(34, 197, 94, 0.65)";
+  ctx.fillText("PARALLEL", 8, y - 5);
+  ctx.restore();
 }
 
 // ── Form Analysis ────────────────────────────────────────────
@@ -692,6 +1030,7 @@ async function loop() {
 
   const lm = result?.landmarks?.[0];
   if (lm) {
+    calibrateDepthGuide(lm);
     drawPose(lm);
     const lk = ang(lm[23], lm[25], lm[27]), rk = ang(lm[24], lm[26], lm[28]);
     const ka = Math.min(lk, rk);
@@ -862,30 +1201,31 @@ function describeCameraError(err) {
   return 'Camera unavailable. Switched to manual mode.';
 }
 
-function runCountdown(seconds) {
-  return new Promise((resolve) => {
-    let n = seconds;
-    countdownNum.textContent = String(n);
-    countdownEl.classList.remove('hidden');
-    haptic(20);
-    const tick = () => {
-      n -= 1;
-      if (n <= 0) {
-        countdownEl.classList.add('hidden');
-        haptic([40, 30, 40]);
-        resolve();
-        return;
-      }
-      countdownNum.textContent = String(n);
-      countdownNum.classList.remove('pulse');
-      // force reflow to restart animation
-      void countdownNum.offsetWidth;
-      countdownNum.classList.add('pulse');
-      haptic(20);
-      setTimeout(tick, 1000);
-    };
-    setTimeout(tick, 1000);
-  });
+  // Countdown
+  await doCountdown();
+
+  running = true; paused = false; phase = "standing"; repCount = 0;
+  minAngle = 180; hadValgus = false; hadLean = false;
+  setData = []; formScore = 100; repStartTime = 0;
+  standingHipY = null; standingKneeY = null; depthGuideY = null;
+
+  repsEl.textContent = "0"; depthEl.textContent = "--"; phaseEl.textContent = "standing";
+  angleEl.textContent = "--"; scoreValue.textContent = "--";
+  updateScoreRing(0); depthCard.className = "stat-card stat-depth";
+
+  controlsSection.classList.add("hidden");
+  workoutCtrl.classList.remove("hidden");
+  camFlipBtn.classList.remove("hidden");
+  summaryEl.classList.add("hidden");
+  restTimerEl.classList.add("hidden");
+  aiCoaching.classList.add("hidden");
+  aiCoachBtn.classList.remove("hidden");
+  aiCoachBtnText.textContent = "Get AI Coaching";
+  aiCoachBtn.disabled = false;
+
+  const nm = settings.userName;
+  startTimer(); haptic(100); say(nm ? `let's cook ${nm}` : "let's gooo");
+  loop();
 }
 
 function pauseWorkout() {
@@ -965,13 +1305,13 @@ function finishWorkout() {
     say(grade === "A" ? "you ate that!" : grade === "B" ? "solid work" : "we're leveling up");
   }
 
-  haptic([50, 100, 50]);
-  say(grade === 'A' ? 'Great set!' : grade === 'B' ? 'Good work, keep improving' : 'Keep practicing your form');
-
-  if (stream) {
-    stream.getTracks().forEach((t) => t.stop());
-    stream = null;
+  // Check achievements
+  const newAch = checkAchievements({ setData, avgScore, reps: setData.length });
+  if (newAch.length) {
+    setTimeout(() => showAchievementToast(newAch[0]), pbs.length ? 2000 : 500);
   }
+
+  summaryEl.classList.remove("hidden");
 }
 
 function resetForNewSet() {
