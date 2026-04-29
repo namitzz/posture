@@ -25,27 +25,42 @@
         <div class="onboarding-illustration">
           <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5" stroke-linecap="round"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
         </div>
-        <h2>Camera Tracking</h2>
-        <p>postur uses your camera and AI to track your body in real-time. No video is recorded or uploaded.</p>
+        <h2>AI-Powered Tracking</h2>
+        <p>We use AI + your camera to track your body in real-time. No cap, nothing is recorded or uploaded.</p>
+        <div class="onboarding-emoji">&#x2728;</div>
       </div>
       <div class="onboarding-page" data-page="1">
         <div class="onboarding-illustration">
           <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5" stroke-linecap="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
         </div>
-        <h2>Real-time Feedback</h2>
-        <p>Get instant voice and visual cues for depth, knee tracking, and posture. Every rep is scored 0-100.</p>
+        <h2>Instant Feedback</h2>
+        <p>Get voice + visual cues for depth, knee tracking &amp; posture. Every rep scored 0-100, no excuses.</p>
+        <div class="onboarding-emoji">&#x1F525;</div>
       </div>
       <div class="onboarding-page" data-page="2">
         <div class="onboarding-illustration">
           <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5" stroke-linecap="round"><path d="M12 20V10M18 20V4M6 20v-4"/></svg>
         </div>
-        <h2>Track Progress</h2>
-        <p>Build streaks, beat personal records, and watch your form improve over time.</p>
+        <h2>Level Up</h2>
+        <p>Build streaks, crush personal records &amp; watch your form glow up over time.</p>
+        <div class="onboarding-emoji">&#x1F4C8;</div>
       </div>
       <div class="onboarding-dots">
         <span class="dot active"></span><span class="dot"></span><span class="dot"></span>
       </div>
       <button id="onboardingNext" class="btn-primary">Next</button>
+    </div>
+
+    <!-- ====== NAME INPUT ====== -->
+    <div id="nameScreen" class="name-screen hidden">
+      <div class="name-inner">
+        <div class="name-emoji">&#x1F44B;</div>
+        <h2>what should we call you?</h2>
+        <p>your AI coach will use this name</p>
+        <input type="text" id="nameInput" class="name-field" placeholder="enter your name" maxlength="20" autocomplete="off" />
+        <button id="nameSubmit" class="btn-primary btn-glow" disabled>let's gooo</button>
+        <button id="nameSkip" class="btn-skip">skip for now</button>
+      </div>
     </div>
 
     <!-- ====== SPLASH SCREEN ====== -->
@@ -63,8 +78,26 @@
           </g>
           <text x="172" y="68" font-family="Inter, system-ui, sans-serif" font-weight="800" font-size="72" fill="white" letter-spacing="-3">ur</text>
         </svg>
-        <p class="splash-tagline">AI Form Coach</p>
+        <p class="splash-tagline">your AI form coach</p>
         <div class="splash-loader"><div class="splash-loader-bar"></div></div>
+      </div>
+    </div>
+
+    <!-- ====== CAMERA PERMISSION ====== -->
+    <div id="camPermission" class="cam-permission hidden">
+      <div class="cam-perm-inner">
+        <div class="cam-perm-icon">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5" stroke-linecap="round"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
+        </div>
+        <h2>camera access needed</h2>
+        <p>postur uses your camera to track your squat form in real-time. nothing is recorded or uploaded fr fr</p>
+        <div class="cam-perm-features">
+          <div class="cam-perm-feat"><span>&#x1F512;</span><span>100% private &mdash; stays on your device</span></div>
+          <div class="cam-perm-feat"><span>&#x1F916;</span><span>AI tracks your body for live feedback</span></div>
+          <div class="cam-perm-feat"><span>&#x1F4F1;</span><span>works best with full body visible</span></div>
+        </div>
+        <button id="camPermAllow" class="btn-primary btn-glow">allow camera</button>
+        <button id="camPermCancel" class="btn-skip">maybe later</button>
       </div>
     </div>
 
@@ -81,18 +114,21 @@
 
       <!-- Top bar -->
       <header class="topbar">
-        <svg class="topbar-logo" viewBox="0 0 140 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <text x="0" y="34" font-family="Inter, system-ui, sans-serif" font-weight="800" font-size="36" fill="white" letter-spacing="-1.5">pos</text>
-          <g transform="translate(74, 0)">
-            <circle cx="6" cy="4" r="3" fill="white"/>
-            <line x1="-11" y1="10" x2="23" y2="10" stroke="white" stroke-width="2" stroke-linecap="round"/>
-            <rect x="-13" y="8" width="5" height="4" rx="1" fill="white"/>
-            <rect x="20" y="8" width="5" height="4" rx="1" fill="white"/>
-            <line x1="6" y1="13" x2="6" y2="34" stroke="white" stroke-width="3" stroke-linecap="round"/>
-            <line x1="-1" y1="18" x2="13" y2="18" stroke="white" stroke-width="2" stroke-linecap="round"/>
-          </g>
-          <text x="86" y="34" font-family="Inter, system-ui, sans-serif" font-weight="800" font-size="36" fill="white" letter-spacing="-1.5">ur</text>
-        </svg>
+        <div class="topbar-left">
+          <svg class="topbar-logo" viewBox="0 0 140 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <text x="0" y="34" font-family="Inter, system-ui, sans-serif" font-weight="800" font-size="36" fill="white" letter-spacing="-1.5">pos</text>
+            <g transform="translate(74, 0)">
+              <circle cx="6" cy="4" r="3" fill="white"/>
+              <line x1="-11" y1="10" x2="23" y2="10" stroke="white" stroke-width="2" stroke-linecap="round"/>
+              <rect x="-13" y="8" width="5" height="4" rx="1" fill="white"/>
+              <rect x="20" y="8" width="5" height="4" rx="1" fill="white"/>
+              <line x1="6" y1="13" x2="6" y2="34" stroke="white" stroke-width="3" stroke-linecap="round"/>
+              <line x1="-1" y1="18" x2="13" y2="18" stroke="white" stroke-width="2" stroke-linecap="round"/>
+            </g>
+            <text x="86" y="34" font-family="Inter, system-ui, sans-serif" font-weight="800" font-size="36" fill="white" letter-spacing="-1.5">ur</text>
+          </svg>
+          <span id="topbarGreeting" class="topbar-greeting hidden"></span>
+        </div>
         <div class="topbar-actions">
           <button id="streakBtn" class="streak-badge" aria-label="Streak">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="#f97316"><path d="M12 2c.5 3.5 4 6 4 10a4 4 0 11-8 0c0-4 3.5-6.5 4-10z"/></svg>
@@ -154,7 +190,7 @@
           <!-- Camera placeholder -->
           <div id="cameraPlaceholder" class="camera-placeholder">
             <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.3)" stroke-width="1.5" stroke-linecap="round"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
-            <p>Tap Start to begin</p>
+            <p>tap start to cook</p>
           </div>
         </div>
       </section>
@@ -224,7 +260,7 @@
       <!-- Set summary -->
       <section id="summary" class="summary-card hidden">
         <div class="summary-header">
-          <h2>Set Complete</h2>
+          <h2 id="summaryTitle">Set Complete</h2>
           <div class="summary-grade" id="summaryGrade">A</div>
         </div>
         <div id="pbBanner" class="pb-banner hidden">
@@ -345,6 +381,16 @@
       </div>
       <div class="panel-body">
         <div class="setting-group">
+          <h3>Profile</h3>
+          <label class="setting-row">
+            <span>Your name</span>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span id="settingsNameDisplay" class="setting-name-display">--</span>
+              <button id="changeNameBtn" class="btn-change-sm">Change</button>
+            </div>
+          </label>
+        </div>
+        <div class="setting-group">
           <h3>Camera</h3>
           <label class="setting-row">
             <span>Use front camera</span>
@@ -393,7 +439,7 @@
         </div>
         <div class="setting-group">
           <h3>About</h3>
-          <p class="setting-about">postur v2.0 — AI-powered squat form coach.<br/>Uses MediaPipe Pose for on-device tracking.<br/>No data leaves your phone.</p>
+          <p class="setting-about">postur v2.1 — your AI squat form coach.<br/>On-device tracking via MediaPipe Pose.<br/>100% private. no data leaves your phone. fr fr.</p>
         </div>
       </div>
     </div>

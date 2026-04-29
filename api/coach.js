@@ -10,7 +10,7 @@ export default async function handler(req, res) {
     return;
   }
 
-  const { setData, avgScore, grade, reps, avgDepth, avgTempo } = req.body || {};
+  const { setData, avgScore, grade, reps, avgDepth, avgTempo, userName } = req.body || {};
   if (!setData || !setData.length) {
     res.status(400).json({ error: "No set data provided" });
     return;
@@ -20,7 +20,9 @@ export default async function handler(req, res) {
     `Rep ${i + 1}: depth ${r.minAngle}°, score ${r.score}/100, tempo ${(r.tempoMs / 1000).toFixed(1)}s${r.hadValgus ? ", knee valgus" : ""}${r.hadLean ? ", forward lean" : ""}`
   ).join("\n");
 
-  const prompt = `You are postur, an expert AI squat form coach. Analyze this set and give brief, actionable coaching feedback.
+  const nameCtx = userName ? `The user's name is ${userName}. Address them by name naturally.` : "";
+
+  const prompt = `You are postur, an expert AI squat form coach with a chill gen-z vibe. ${nameCtx} Analyze this set and give brief, actionable coaching feedback.
 
 Set Summary:
 - Reps: ${reps}
@@ -37,7 +39,7 @@ Give coaching feedback in this format:
 2. Top 2-3 specific things to improve (brief bullet points)
 3. One thing they did well (encouragement)
 
-Keep it conversational, under 120 words. Use "you" not "the lifter".`;
+Keep it conversational and gen-z friendly — use phrases like "no cap", "lowkey", "slay", "fire" naturally but don't overdo it. Under 120 words. Use "you" not "the lifter".`;
 
   try {
     const response = await fetch("https://api.anthropic.com/v1/messages", {

@@ -47,7 +47,7 @@ function fmtTime(ms) {
 }
 
 // ── Settings ──────────────────────────────────────────────────
-const DEFS = { frontCam:false, voice:true, haptic:true, countdown:true, depthTarget:90, restDuration:60 };
+const DEFS = { frontCam:false, voice:true, haptic:true, countdown:true, depthTarget:90, restDuration:60, userName:"" };
 let settings = { ...DEFS, ...loadJ("postur_settings") };
 function saveSets() { saveJ("postur_settings", settings); }
 function applyUI() {
@@ -59,6 +59,7 @@ function applyUI() {
   D("setRest").value = settings.restDuration;
 }
 applyUI();
+setTimeout(updateGreeting, 0);
 for (const [id, key] of [["setFrontCam","frontCam"],["setVoice","voice"],["setHaptic","haptic"],["setCountdown","countdown"]]) {
   D(id).addEventListener("change", e => { settings[key] = e.target.checked; saveSets(); });
 }
@@ -74,6 +75,49 @@ let repStartTime = 0;
 let restInterval = null, restRemaining = 0;
 const THRESH = { descent:170, bottom:150, ascent:155, stand:168, valgus:0.12 };
 
+// ── Name Screen ──────────────────────────────────────────────
+function showNameScreenIfNeeded() {
+  if (settings.userName) return false;
+  D("nameScreen").classList.remove("hidden");
+  return true;
+}
+function finishNameScreen() {
+  D("nameScreen").classList.add("hidden");
+  appEl.classList.remove("hidden");
+  updateGreeting();
+}
+D("nameInput").addEventListener("input", e => {
+  D("nameSubmit").disabled = !e.target.value.trim();
+});
+D("nameSubmit").addEventListener("click", () => {
+  const name = D("nameInput").value.trim();
+  if (name) { settings.userName = name; saveSets(); }
+  finishNameScreen();
+});
+D("nameSkip").addEventListener("click", finishNameScreen);
+
+function updateGreeting() {
+  const el = D("topbarGreeting");
+  const nameDisp = D("settingsNameDisplay");
+  if (settings.userName) {
+    el.textContent = "hey, " + settings.userName;
+    el.classList.remove("hidden");
+    if (nameDisp) nameDisp.textContent = settings.userName;
+  } else {
+    el.classList.add("hidden");
+    if (nameDisp) nameDisp.textContent = "not set";
+  }
+}
+
+D("changeNameBtn").addEventListener("click", () => {
+  const name = prompt("Enter your name:", settings.userName || "");
+  if (name !== null) {
+    settings.userName = name.trim();
+    saveSets();
+    updateGreeting();
+  }
+});
+
 // ── Onboarding ────────────────────────────────────────────────
 let onboardPage = 0;
 function showOnboarding() {
@@ -86,11 +130,15 @@ onboardingNext.addEventListener("click", () => {
   if (onboardPage >= 3) {
     localStorage.setItem("postur_onboarded", "1");
     onboardingEl.classList.add("hidden");
+    if (!showNameScreenIfNeeded()) {
+      appEl.classList.remove("hidden");
+      updateGreeting();
+    }
     return;
   }
   onboardingEl.querySelectorAll(".onboarding-page").forEach((p,i) => p.classList.toggle("active", i===onboardPage));
   onboardingEl.querySelectorAll(".dot").forEach((d,i) => d.classList.toggle("active", i===onboardPage));
-  if (onboardPage === 2) onboardingNext.textContent = "Get Started";
+  if (onboardPage === 2) onboardingNext.textContent = "let's gooo \u{1F680}";
 });
 
 // ── Splash ────────────────────────────────────────────────────
@@ -99,9 +147,11 @@ window.addEventListener("load", () => {
     splash.classList.add("fade-out");
     setTimeout(() => {
       splash.classList.add("hidden");
-      if (!showOnboarding()) appEl.classList.remove("hidden");
-      else {
-        appEl.classList.remove("hidden");
+      if (!showOnboarding()) {
+        if (!showNameScreenIfNeeded()) {
+          appEl.classList.remove("hidden");
+          updateGreeting();
+        }
       }
       updateStreak();
     }, 600);
@@ -344,9 +394,9 @@ function analyzeForm(lm, ka) {
   const ha = ang(lm[11], lm[23], lm[25]);
   const cues = [];
   let pen = 0;
-  if (hw > 1e-6 && (hw - kw)/hw > THRESH.valgus) { cues.push("Push knees out"); hadValgus = true; pen += 15; }
-  if (ha < 65) { cues.push("Chest up"); hadLean = true; pen += 10; }
-  if (phase === "bottom" && ka > settings.depthTarget + 15) { cues.push("Go deeper"); pen += 10; }
+  if (hw > 1e-6 && (hw - kw)/hw > THRESH.valgus) { cues.push("knees out!"); hadValgus = true; pen += 15; }
+  if (ha < 65) { cues.push("chest up, stay tall"); hadLean = true; pen += 10; }
+  if (phase === "bottom" && ka > settings.depthTarget + 15) { cues.push("deeper! you got this"); pen += 10; }
   if (phase === "bottom" && ka <= settings.depthTarget) pen -= 5;
   formScore = Math.max(0, Math.min(100, formScore - pen * 0.3 + 0.5));
   return cues;
@@ -374,7 +424,7 @@ function updatePhase(ka) {
     minAngle = 180; hadValgus = false; hadLean = false;
     showRepFlash(repCount);
     haptic([30, 50, 30]);
-    say(sc >= 80 ? `${repCount}` : `${repCount}, watch your form`);
+    say(sc >= 80 ? `${repCount}, sheesh` : `${repCount}, tighten up`);
   }
 }
 
@@ -475,7 +525,7 @@ function startRest() {
     restRemaining--;
     restTimeEl.textContent = Math.max(0, restRemaining);
     restRing.style.strokeDashoffset = ((total - restRemaining) / total * circ).toString();
-    if (restRemaining <= 0) { endRest(); haptic([100,50,100]); say("Rest over. Let's go."); }
+    if (restRemaining <= 0) { endRest(); haptic([100,50,100]); say(settings.userName ? `rest over ${settings.userName}, time to cook` : "rest over, time to cook"); }
   }, 1000);
 }
 function endRest() {
@@ -486,8 +536,29 @@ function endRest() {
 skipRest.addEventListener("click", endRest);
 addRest.addEventListener("click", () => { restRemaining += 30; });
 
+// ── Camera Permission Pre-Ask ────────────────────────────────
+function showCamPermission() {
+  D("camPermission").classList.remove("hidden");
+}
+D("camPermAllow").addEventListener("click", () => {
+  localStorage.setItem("postur_cam_asked", "1");
+  D("camPermission").classList.add("hidden");
+  doStartWorkout();
+});
+D("camPermCancel").addEventListener("click", () => {
+  D("camPermission").classList.add("hidden");
+});
+
 // ── Workout Lifecycle ────────────────────────────────────────
 async function startWorkout() {
+  if (!stream && !localStorage.getItem("postur_cam_asked")) {
+    showCamPermission();
+    return;
+  }
+  doStartWorkout();
+}
+
+async function doStartWorkout() {
   startBtn.querySelector("span").textContent = "Loading...";
   startBtn.disabled = true;
   try {
@@ -533,7 +604,8 @@ async function startWorkout() {
   aiCoachBtnText.textContent = "Get AI Coaching";
   aiCoachBtn.disabled = false;
 
-  startTimer(); haptic(100); say("Let's go");
+  const nm = settings.userName;
+  startTimer(); haptic(100); say(nm ? `let's cook ${nm}` : "let's gooo");
   loop();
 }
 
@@ -564,6 +636,15 @@ function finishWorkout() {
   const avgTempo = Math.round(setData.reduce((s,r) => s + r.tempoMs, 0) / setData.length / 100) / 10;
   const grade = avgScore >= 80 ? "A" : avgScore >= 60 ? "B" : "C";
 
+  const summaryTitle = D("summaryTitle");
+  if (settings.userName) {
+    const titles = grade === "A" ? [`${settings.userName} ate that`, `slay ${settings.userName}`, `${settings.userName} cooked`] :
+                   grade === "B" ? [`solid set ${settings.userName}`, `not bad ${settings.userName}`] :
+                   [`keep going ${settings.userName}`, `${settings.userName}, we're locking in`];
+    summaryTitle.textContent = titles[Math.floor(Math.random() * titles.length)];
+  } else {
+    summaryTitle.textContent = grade === "A" ? "you ate that" : grade === "B" ? "solid set" : "keep grinding";
+  }
   summaryGrade.textContent = grade;
   summaryGrade.className = "summary-grade" + (grade === "B" ? " b" : grade === "C" ? " c" : "");
 
@@ -597,11 +678,11 @@ function finishWorkout() {
     pbBanner.classList.remove("hidden");
     fireConfetti();
     haptic([50, 100, 50, 100, 50]);
-    say("New personal best!");
+    say(settings.userName ? `new PB ${settings.userName}, sheesh!` : "new PB, sheesh!");
   } else {
     pbBanner.classList.add("hidden");
     haptic([50, 100, 50]);
-    say(grade === "A" ? "Great set!" : grade === "B" ? "Good work" : "Keep practicing");
+    say(grade === "A" ? "you ate that!" : grade === "B" ? "solid work" : "we're leveling up");
   }
 
   summaryEl.classList.remove("hidden");
@@ -638,7 +719,7 @@ aiCoachBtn.addEventListener("click", async () => {
     const res = await fetch("/api/coach", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ setData, avgScore, grade, reps: setData.length, avgDepth, avgTempo }),
+      body: JSON.stringify({ setData, avgScore, grade, reps: setData.length, avgDepth, avgTempo, userName: settings.userName || "" }),
     });
     const data = await res.json();
     if (res.ok && data.feedback) {
@@ -660,7 +741,7 @@ shareBtn.addEventListener("click", async () => {
   if (!setData.length) return;
   const avgScore = Math.round(setData.reduce((s,r) => s + r.score, 0) / setData.length);
   const grade = avgScore >= 80 ? "A" : avgScore >= 60 ? "B" : "C";
-  const text = `postur \u2014 Set Complete!\n\nReps: ${setData.length}\nGrade: ${grade}\nAvg Score: ${avgScore}/100\n\nTry postur \u2014 AI squat form coach`;
+  const text = `postur \u2014 just cooked a set \u{1F525}\n\nReps: ${setData.length}\nGrade: ${grade}\nAvg Score: ${avgScore}/100\n\npostur \u2014 AI squat form coach`;
   if (navigator.share) {
     try { await navigator.share({ title: "postur Results", text }); } catch {}
   } else {

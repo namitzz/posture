@@ -1132,6 +1132,220 @@ html, body {
 }
 
 /* ============================================================
+   NAME INPUT SCREEN
+   ============================================================ */
+
+.name-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 1500;
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.name-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 32px;
+  max-width: 340px;
+  width: 100%;
+  animation: fadeSlideUp 0.5s ease-out;
+}
+
+.name-emoji { font-size: 48px; margin-bottom: 16px; }
+
+.name-screen h2 {
+  font-size: 26px;
+  font-weight: 800;
+  margin-bottom: 8px;
+  letter-spacing: -0.5px;
+}
+
+.name-screen p {
+  font-size: 15px;
+  color: var(--text-secondary);
+  margin-bottom: 28px;
+}
+
+.name-field {
+  width: 100%;
+  background: var(--card);
+  border: 2px solid var(--border);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 18px;
+  font-weight: 600;
+  text-align: center;
+  padding: 16px 20px;
+  border-radius: var(--radius);
+  outline: none;
+  transition: border-color 0.3s;
+  margin-bottom: 16px;
+}
+
+.name-field:focus { border-color: #6366f1; }
+.name-field::placeholder { color: var(--text-muted); font-weight: 400; }
+
+.btn-glow {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: white;
+}
+
+.btn-glow:active { opacity: 0.9; }
+
+.btn-skip {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  padding: 12px 20px;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.btn-skip:active { color: var(--text-secondary); }
+
+/* ============================================================
+   CAMERA PERMISSION SCREEN
+   ============================================================ */
+
+.cam-permission {
+  position: fixed;
+  inset: 0;
+  z-index: 950;
+  background: rgba(0, 0, 0, 0.92);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.cam-perm-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  max-width: 340px;
+  width: 100%;
+  animation: fadeSlideUp 0.4s ease-out;
+}
+
+.cam-perm-icon {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, rgba(99,102,241,0.2), rgba(139,92,246,0.15));
+  border: 1px solid rgba(99,102,241,0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 20px;
+}
+
+.cam-permission h2 {
+  font-size: 22px;
+  font-weight: 800;
+  margin-bottom: 8px;
+}
+
+.cam-permission p {
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin-bottom: 24px;
+}
+
+.cam-perm-features {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 28px;
+}
+
+.cam-perm-feat {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px 16px;
+  font-size: 13px;
+  text-align: left;
+  color: var(--text-secondary);
+}
+
+.cam-perm-feat span:first-child { font-size: 18px; flex-shrink: 0; }
+
+.cam-permission .btn-primary { width: 100%; margin-bottom: 4px; }
+.cam-permission .btn-skip { margin-top: 4px; }
+
+/* ============================================================
+   TOPBAR GREETING
+   ============================================================ */
+
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.topbar-greeting {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100px;
+}
+
+/* ============================================================
+   GEN-Z ACCENT TOUCHES
+   ============================================================ */
+
+.onboarding-illustration {
+  background: linear-gradient(135deg, rgba(99,102,241,0.15), rgba(139,92,246,0.1));
+  border-color: rgba(99,102,241,0.25);
+}
+
+.onboarding-emoji { font-size: 32px; margin-top: 8px; }
+
+.btn-primary.btn-vibe {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: white;
+}
+
+/* Settings name row */
+.setting-name-display {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.btn-change-sm {
+  background: var(--card);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 12px;
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+}
+
+/* ============================================================
    RESPONSIVE & SAFE AREA
    ============================================================ */
 
