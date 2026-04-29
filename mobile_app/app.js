@@ -1,39 +1,167 @@
 let FilesetResolver, PoseLandmarker;
+// Backward-compatibility shim:
+// Some previously deployed bundles referenced these legacy globals.
+// Keeping them defined prevents hard runtime crashes on mixed/stale caches.
+const useLegacyPoseFallback = false;
+let legacyPose = null;
+let legacyPoseResults = null;
+const MEDIAPIPE_VERSION = '0.10.14';
+const MEDIAPIPE_CDN_TIMEOUT_MS = 8000;
+const MEDIAPIPE_BUNDLES = [
+  `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_VERSION}/vision_bundle.js`,
+  `https://unpkg.com/@mediapipe/tasks-vision@${MEDIAPIPE_VERSION}/vision_bundle.js`,
+  `https://fastly.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_VERSION}/vision_bundle.js`,
+];
 
-const D = id => document.getElementById(id);
+/* ---------- DOM refs ----------------------------------------- */
+const $ = (id) => document.getElementById(id);
 
-const splash = D("splash"), appEl = D("app"), video = D("camera"), canvas = D("overlay");
-const ctx = canvas.getContext("2d");
-const placeholder = D("cameraPlaceholder"), hudStatus = D("hudStatus"), hudTimer = D("hudTimer");
-const hudTempo = D("hudTempo"), tempoValue = D("tempoValue"), camFlipBtn = D("camFlipBtn");
-const scoreRing = D("scoreRing"), scoreValue = D("scoreValue");
-const cueOverlay = D("cueOverlay"), cueText = D("cueText");
-const repFlash = D("repFlash"), repFlashNum = D("repFlashNum");
-const repsEl = D("reps"), depthEl = D("depth"), phaseEl = D("phase"), angleEl = D("angle");
-const depthCard = document.querySelector(".stat-depth");
-const startBtn = D("startBtn"), controlsSection = D("controlsSection");
-const workoutCtrl = D("workoutControls"), pauseBtn = D("pauseBtn");
-const finishBtn = D("finishBtn"), audioToggle = D("audioToggle");
-const restTimerEl = D("restTimer"), restRing = D("restRing"), restTimeEl = D("restTime");
-const skipRest = D("skipRest"), addRest = D("addRest");
-const summaryEl = D("summary"), summaryGrade = D("summaryGrade");
-const pbBanner = D("pbBanner"), pbText = D("pbText");
-const summaryStats = D("summaryStats"), summaryTempo = D("summaryTempo");
-const summaryReps = D("summaryReps"), shareBtn = D("shareBtn"), newSetBtn = D("newSetBtn");
-const streakBtn = D("streakBtn"), streakCount = D("streakCount");
-const countdownEl = D("countdown"), countdownNum = D("countdownNum");
-const confettiCanvas = D("confetti");
-const confettiCtx = confettiCanvas.getContext("2d");
-const onboardingEl = D("onboarding"), onboardingNext = D("onboardingNext");
+const splash        = $('splash');
+const appEl         = $('app');
+const video         = $('camera');
+const canvas        = $('overlay');
+const ctx           = canvas.getContext('2d');
+const cameraWrap    = $('cameraWrap');
+const placeholder   = $('cameraPlaceholder');
+const placeholderText = $('cameraPlaceholderText');
+const countdownEl   = $('countdown');
+const countdownNum  = $('countdownNum');
+const framingHint   = $('framingHint');
+const toastEl       = $('toast');
 
-// ── Helpers ───────────────────────────────────────────────────
-function loadJ(k) { try { return JSON.parse(localStorage.getItem(k)) || {}; } catch { return {}; } }
-function saveJ(k, v) { localStorage.setItem(k, JSON.stringify(v)); }
-function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
-function ang(a, b, c) {
-  const ba = [a.x - b.x, a.y - b.y], bc = [c.x - b.x, c.y - b.y];
-  const dot = ba[0]*bc[0] + ba[1]*bc[1];
-  return (Math.acos(Math.max(-1, Math.min(1, dot / (Math.hypot(...ba)*Math.hypot(...bc)+1e-6)))) * 180) / Math.PI;
+const hudStatus     = $('hudStatus');
+const hudTimer      = $('hudTimer');
+const hudScore      = $('hudScore');
+const scoreRing     = $('scoreRing');
+const scoreValue    = $('scoreValue');
+const cueOverlay    = $('cueOverlay');
+const cueText       = $('cueText');
+const repFlash      = $('repFlash');
+const repFlashNum   = $('repFlashNum');
+
+const repsEl        = $('reps');
+const depthEl       = $('depth');
+const phaseEl       = $('phase');
+const angleEl       = $('angle');
+const depthCard     = document.querySelector('.stat-depth');
+
+const startBtn      = $('startBtn');
+const startNoCameraBtn = $('startNoCameraBtn');
+const workoutCtrl   = $('workoutControls');
+const pauseBtn      = $('pauseBtn');
+const finishBtn     = $('finishBtn');
+const audioToggle   = $('audioToggle');
+const manualRepBtn  = $('manualRepBtn');
+
+const summaryEl     = $('summary');
+const summaryGrade  = $('summaryGrade');
+const summaryStats  = $('summaryStats');
+const summaryReps   = $('summaryReps');
+const newSetBtn     = $('newSetBtn');
+
+const historyBtn    = $('historyBtn');
+const historyPanel  = $('historyPanel');
+const closeHistory  = $('closeHistory');
+const historyList   = $('historyList');
+
+const settingsBtn   = $('settingsBtn');
+const settingsPanel = $('settingsPanel');
+const closeSettings = $('closeSettings');
+
+/* ---------- Settings (persisted) ----------------------------- */
+const DEFAULTS = {
+  frontCam: false,
+  voice: true,
+  haptic: true,
+  depthTarget: 90,
+  audioEnabled: true,
+};
+
+let settings = { ...DEFAULTS, ...loadJSON('postur_settings') };
+applySettingsToUI();
+
+function loadJSON(key) {
+  try { return JSON.parse(localStorage.getItem(key)) || {}; }
+  catch { return {}; }
+}
+
+function saveSettings() {
+  localStorage.setItem('postur_settings', JSON.stringify(settings));
+}
+
+function applySettingsToUI() {
+  $('setFrontCam').checked = settings.frontCam;
+  $('setVoice').checked    = settings.voice;
+  $('setHaptic').checked   = settings.haptic;
+  $('setDepth').value      = settings.depthTarget;
+}
+
+$('setFrontCam').addEventListener('change', (e) => { settings.frontCam = e.target.checked; saveSettings(); });
+$('setVoice').addEventListener('change', (e) => { settings.voice = e.target.checked; saveSettings(); });
+$('setHaptic').addEventListener('change', (e) => { settings.haptic = e.target.checked; saveSettings(); });
+$('setDepth').addEventListener('change', (e) => {
+  settings.depthTarget = Math.max(60, Math.min(120, +e.target.value || 90));
+  e.target.value = settings.depthTarget;
+  saveSettings();
+});
+
+/* ---------- State -------------------------------------------- */
+let landmarker    = null;
+let stream        = null;
+let running       = false;
+let paused        = false;
+let noCameraMode  = false;
+let audioEnabled  = settings.audioEnabled !== false;
+let phase         = 'standing';   // standing | descending | bottom | ascending
+let repCount      = 0;
+let minAngle      = 180;
+let hadValgus     = false;
+let hadLean       = false;
+let setData       = [];           // per-rep data
+let timerStart    = 0;
+let elapsedMsBeforePause = 0;
+let timerInterval = null;
+let lastCueTime   = 0;
+let lastCueText   = '';
+let formScore     = 100;          // live form score
+let manualMode    = false;
+let wakeLock      = null;         // Screen Wake Lock sentinel
+let lastPersonSeenAt = 0;         // performance.now() of last successful detection
+
+const THRESHOLDS = {
+  descent:  170,
+  bottom:   150,
+  ascent:   155,
+  stand:    168,
+  kneeValgusRatio: 0.12,
+};
+
+/* ---------- Utilities ---------------------------------------- */
+
+function dist(a, b) {
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+function calcAngle(a, b, c) {
+  const ba = [a.x - b.x, a.y - b.y];
+  const bc = [c.x - b.x, c.y - b.y];
+  const dot = ba[0] * bc[0] + ba[1] * bc[1];
+  const mag = Math.hypot(...ba) * Math.hypot(...bc) + 1e-6;
+  return (Math.acos(Math.max(-1, Math.min(1, dot / mag))) * 180) / Math.PI;
+}
+
+function say(text) {
+  if (!settings.voice || !audioEnabled || !window.speechSynthesis) return;
+  const u = new SpeechSynthesisUtterance(text);
+  u.rate = 1.1;
+  u.pitch = 0.95;
+  window.speechSynthesis.cancel();
+  window.speechSynthesis.speak(u);
+}
+
+function haptic(pattern) {
+  if (!settings.haptic || !navigator.vibrate) return;
+  navigator.vibrate(pattern);
 }
 function say(t) {
   if (!settings.voice || !audioOn || !window.speechSynthesis) return;
@@ -141,41 +269,73 @@ onboardingNext.addEventListener("click", () => {
   if (onboardPage === 2) onboardingNext.textContent = "let's gooo \u{1F680}";
 });
 
-// ── Splash ────────────────────────────────────────────────────
-window.addEventListener("load", () => {
-  setTimeout(() => {
-    splash.classList.add("fade-out");
-    setTimeout(() => {
-      splash.classList.add("hidden");
-      if (!showOnboarding()) {
-        if (!showNameScreenIfNeeded()) {
-          appEl.classList.remove("hidden");
-          updateGreeting();
-        }
-      }
-      updateStreak();
-    }, 600);
-  }, 2200);
+let splashHidden = false;
+function hideSplash() {
+  if (splashHidden) return;
+  splashHidden = true;
+  splash.classList.add('fade-out');
+  appEl.classList.remove('hidden');
+  setTimeout(() => splash.classList.add('hidden'), 500);
+}
+
+// Hide as soon as DOM is ready + a brief moment for the loader bar to feel intentional
+window.addEventListener('load', () => {
+  setTimeout(hideSplash, 800);
 });
+// Safety net — never get stuck on splash
+setTimeout(hideSplash, 3500);
 
-// ── Panels ────────────────────────────────────────────────────
-function openPanel(p) { p.classList.remove("hidden","closing"); }
-function closePanel(p) { p.classList.add("closing"); setTimeout(()=>{ p.classList.add("hidden"); p.classList.remove("closing"); }, 250); }
+/* ---------- Wake Lock --------------------------------------- */
 
-D("historyBtn").addEventListener("click", () => { renderHistory(); openPanel(D("historyPanel")); });
-D("closeHistory").addEventListener("click", () => closePanel(D("historyPanel")));
-D("recordsBtn").addEventListener("click", () => { renderRecords(); openPanel(D("recordsPanel")); });
-D("closeRecords").addEventListener("click", () => closePanel(D("recordsPanel")));
-D("settingsBtn").addEventListener("click", () => openPanel(D("settingsPanel")));
-D("closeSettings").addEventListener("click", () => closePanel(D("settingsPanel")));
-D("openGuide").addEventListener("click", () => { closePanel(D("settingsPanel")); setTimeout(()=>openPanel(D("guidePanel")),300); });
-D("closeGuide").addEventListener("click", () => closePanel(D("guidePanel")));
-D("clearDataBtn").addEventListener("click", () => {
-  if (confirm("Clear all workout data? This cannot be undone.")) {
-    localStorage.removeItem("postur_history"); localStorage.removeItem("postur_records"); localStorage.removeItem("postur_streak");
-    alert("Data cleared.");
+async function acquireWakeLock() {
+  if (!('wakeLock' in navigator)) return;
+  try {
+    wakeLock = await navigator.wakeLock.request('screen');
+    wakeLock.addEventListener('release', () => { wakeLock = null; });
+  } catch (err) {
+    console.warn('[WakeLock] Could not acquire:', err);
+  }
+}
+
+async function releaseWakeLock() {
+  if (!wakeLock) return;
+  try { await wakeLock.release(); } catch {}
+  wakeLock = null;
+}
+
+// Re-acquire after the page comes back from being hidden
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && running && !paused && !wakeLock) {
+    acquireWakeLock();
   }
 });
+
+/* ---------- iOS audio unlock --------------------------------- */
+// iOS Safari requires speechSynthesis.speak() to be called from inside a
+// user gesture before any later programmatic calls will play.
+let audioUnlocked = false;
+function unlockAudio() {
+  if (audioUnlocked || !window.speechSynthesis) return;
+  try {
+    const u = new SpeechSynthesisUtterance('');
+    u.volume = 0;
+    window.speechSynthesis.speak(u);
+    audioUnlocked = true;
+  } catch {}
+}
+
+/* ---------- Toast -------------------------------------------- */
+
+let toastTimeout = null;
+function showToast(msg, kind = 'info', duration = 3500) {
+  if (!toastEl) return;
+  toastEl.textContent = msg;
+  toastEl.className = 'toast ' + kind;
+  clearTimeout(toastTimeout);
+  toastTimeout = setTimeout(() => toastEl.classList.add('hidden'), duration);
+}
+
+/* ---------- Panel navigation --------------------------------- */
 
 // ── Streak ────────────────────────────────────────────────────
 function getStreak() { return loadJ("postur_streak"); }
@@ -283,17 +443,9 @@ function fireConfetti() {
   frame = requestAnimationFrame(draw);
 }
 
-// ── MediaPipe ────────────────────────────────────────────────
-async function loadMediaPipe() {
-  if (FilesetResolver) return;
-  // Try ES module dynamic import first
-  try {
-    const mp = await import("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12/+esm");
-    FilesetResolver = mp.FilesetResolver;
-    PoseLandmarker = mp.PoseLandmarker;
-    return;
-  } catch {}
-  // Fallback: load via script tag (UMD)
+async function initLandmarker() {
+  await ensureMediaPipeLoaded();
+
   if (!FilesetResolver) {
     await new Promise((resolve, reject) => {
       const s = document.createElement("script");
@@ -306,34 +458,85 @@ async function loadMediaPipe() {
     FilesetResolver = ns.FilesetResolver;
     PoseLandmarker = ns.PoseLandmarker;
   }
-  if (!FilesetResolver) throw new Error("MediaPipe failed to load");
-}
+  if (!FilesetResolver || !PoseLandmarker) {
+    throw new Error('MediaPipe failed to load (missing vision bundle)');
+  }
 
 async function initLandmarker() {
   await loadMediaPipe();
   const vision = await FilesetResolver.forVisionTasks(
-    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12/wasm"
+    `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_VERSION}/wasm`
   );
-  // Try GPU first, fall back to CPU on mobile devices
-  try {
-    landmarker = await PoseLandmarker.createFromOptions(vision, {
-      baseOptions: {
-        modelAssetPath: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task",
-        delegate: "GPU",
-      },
-      numPoses: 1,
-      runningMode: "VIDEO",
-    });
-  } catch {
-    landmarker = await PoseLandmarker.createFromOptions(vision, {
-      baseOptions: {
-        modelAssetPath: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task",
-        delegate: "CPU",
-      },
-      numPoses: 1,
-      runningMode: "VIDEO",
-    });
+
+  landmarker = await PoseLandmarker.createFromOptions(vision, {
+    baseOptions: {
+      modelAssetPath:
+        'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task',
+      delegate: 'GPU',
+    },
+    runningMode: 'VIDEO',
+    numPoses: 1,
+    minPoseDetectionConfidence: 0.5,
+    minPosePresenceConfidence: 0.5,
+    minTrackingConfidence: 0.5,
+  });
+}
+
+async function ensureMediaPipeLoaded() {
+  if ((window.vision && window.vision.FilesetResolver) || window.FilesetResolver) {
+    console.info('[MediaPipe] vision bundle already present on window object.');
+    return;
   }
+
+  for (const src of MEDIAPIPE_BUNDLES) {
+    try {
+      console.info(`[MediaPipe] Attempting CDN load: ${src}`);
+      await loadScript(src, MEDIAPIPE_CDN_TIMEOUT_MS);
+      if ((window.vision && window.vision.FilesetResolver) || window.FilesetResolver) {
+        console.info(`[MediaPipe] Loaded successfully from: ${src}`);
+        return;
+      }
+    } catch (_err) {
+      console.warn(`[MediaPipe] Failed to load from: ${src}`, _err);
+    }
+  }
+
+  throw new Error('MediaPipe failed to load from CDN');
+}
+
+function loadScript(src, timeoutMs = MEDIAPIPE_CDN_TIMEOUT_MS) {
+  return new Promise((resolve, reject) => {
+    const existing = document.querySelector(`script[data-mediapipe-src="${src}"]`);
+    if (existing) {
+      if (existing.dataset.loaded === 'true') {
+        resolve();
+      } else {
+        existing.addEventListener('load', () => resolve(), { once: true });
+        existing.addEventListener('error', () => reject(new Error(`Failed to load ${src}`)), { once: true });
+      }
+      return;
+    }
+
+    const timeoutId = setTimeout(
+      () => reject(new Error(`Timed out loading ${src} after ${timeoutMs}ms`)),
+      timeoutMs
+    );
+
+    const script = document.createElement('script');
+    script.src = src;
+    script.async = true;
+    script.dataset.mediapipeSrc = src;
+    script.addEventListener('load', () => {
+      clearTimeout(timeoutId);
+      script.dataset.loaded = 'true';
+      resolve();
+    }, { once: true });
+    script.addEventListener('error', () => {
+      clearTimeout(timeoutId);
+      reject(new Error(`Failed to load ${src}`));
+    }, { once: true });
+    document.head.appendChild(script);
+  });
 }
 
 // ── Camera ───────────────────────────────────────────────────
@@ -353,7 +556,8 @@ async function startCamera() {
   video.setAttribute("playsinline", "true");
   video.setAttribute("muted", "true");
   await video.play();
-  placeholder.classList.add("hidden");
+  cameraWrap.classList.toggle('is-front', settings.frontCam);
+  placeholder.classList.add('hidden');
 }
 
 async function flipCamera() {
@@ -478,7 +682,14 @@ async function loop() {
   canvas.width = video.videoWidth || 720;
   canvas.height = video.videoHeight || 960;
   let result;
-  try { result = landmarker.detectForVideo(video, performance.now()); } catch { requestAnimationFrame(loop); return; }
+  try {
+    result = landmarker.detectForVideo(video, performance.now());
+  } catch (err) {
+    console.warn('[MediaPipe] Detection step failed.', err);
+    requestAnimationFrame(loop);
+    return;
+  }
+
   const lm = result?.landmarks?.[0];
   if (lm) {
     drawPose(lm);
@@ -506,32 +717,35 @@ async function loop() {
 
 // ── Timer ────────────────────────────────────────────────────
 function startTimer() {
-  timerStart = Date.now(); hudTimer.textContent = "00:00";
-  timerInterval = setInterval(() => { hudTimer.textContent = fmtTime(Date.now() - timerStart); }, 1000);
-}
-function stopTimer() { clearInterval(timerInterval); timerInterval = null; }
-
-// ── Rest Timer ───────────────────────────────────────────────
-function startRest() {
-  restRemaining = settings.restDuration;
-  const total = restRemaining;
-  const circ = 326.73;
-  restTimeEl.textContent = restRemaining;
-  restRing.style.strokeDashoffset = "0";
-  restTimerEl.classList.remove("hidden");
-  summaryEl.classList.add("hidden");
-
-  restInterval = setInterval(() => {
-    restRemaining--;
-    restTimeEl.textContent = Math.max(0, restRemaining);
-    restRing.style.strokeDashoffset = ((total - restRemaining) / total * circ).toString();
-    if (restRemaining <= 0) { endRest(); haptic([100,50,100]); say(settings.userName ? `rest over ${settings.userName}, time to cook` : "rest over, time to cook"); }
+  if (!timerStart) timerStart = Date.now();
+  updateTimerUI();
+  stopTimer();
+  timerInterval = setInterval(() => {
+    hudTimer.textContent = fmtTime(elapsedMsBeforePause + (Date.now() - timerStart));
   }, 1000);
 }
-function endRest() {
-  clearInterval(restInterval); restInterval = null;
-  restTimerEl.classList.add("hidden");
-  resetForNewSet();
+
+function stopTimer() {
+  if (timerInterval) {
+    clearInterval(timerInterval);
+    timerInterval = null;
+  }
+}
+
+function updateTimerUI() {
+  const elapsed = elapsedMsBeforePause + (timerStart ? Date.now() - timerStart : 0);
+  hudTimer.textContent = fmtTime(elapsed);
+}
+
+function stopCameraStream() {
+  if (stream) {
+    stream.getTracks().forEach((t) => t.stop());
+    stream = null;
+  }
+  video.srcObject = null;
+  placeholder.classList.remove('hidden');
+  cameraWrap.classList.remove('is-front');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
 }
 skipRest.addEventListener("click", endRest);
 addRest.addEventListener("click", () => { restRemaining += 30; });
@@ -549,101 +763,167 @@ D("camPermCancel").addEventListener("click", () => {
   D("camPermission").classList.add("hidden");
 });
 
-// ── Workout Lifecycle ────────────────────────────────────────
-async function startWorkout() {
-  if (!stream && !localStorage.getItem("postur_cam_asked")) {
-    showCamPermission();
-    return;
+async function startWorkout({ skipCamera = false } = {}) {
+  // Triggered from a real user gesture — unlock iOS audio + acquire wake lock now
+  unlockAudio();
+  acquireWakeLock();
+
+  startBtn.querySelector('span').textContent = 'Loading…';
+  startBtn.disabled = true;
+  startNoCameraBtn.disabled = true;
+
+  let cameraOk = false;
+  if (!skipCamera) {
+    try {
+      if (!landmarker) await initLandmarker();
+      await startCamera();
+      cameraOk = true;
+    } catch (err) {
+      console.warn('[Startup] Camera unavailable, falling back to manual mode:', err);
+      const friendly = describeCameraError(err);
+      showToast(friendly, 'error', 5000);
+    }
   }
-  doStartWorkout();
+  noCameraMode = !cameraOk;
+  manualMode = !cameraOk;
+
+  // Reset state
+  running = true;
+  paused = false;
+  phase = 'standing';
+  repCount = 0;
+  minAngle = 180;
+  hadValgus = false;
+  hadLean = false;
+  setData = [];
+  formScore = 100;
+  timerStart = 0;
+  elapsedMsBeforePause = 0;
+  lastPersonSeenAt = 0;
+
+  // Update UI
+  repsEl.textContent = '0';
+  depthEl.textContent = '--';
+  phaseEl.textContent = manualMode ? 'manual' : 'standing';
+  angleEl.textContent = '--';
+  scoreValue.textContent = '--';
+  updateScoreRing(0);
+  depthCard.className = 'stat-card stat-depth';
+
+  startBtn.classList.add('hidden');
+  startNoCameraBtn.classList.add('hidden');
+  workoutCtrl.classList.remove('hidden');
+  manualRepBtn.classList.toggle('hidden', !manualMode);
+  summaryEl.classList.add('hidden');
+  framingHint.classList.add('hidden');
+
+  if (manualMode) {
+    placeholder.classList.remove('hidden');
+    placeholderText.textContent = skipCamera
+      ? 'Manual mode — tap + Rep to log each squat'
+      : 'Camera unavailable — tap + Rep to log each squat';
+    hudStatus.querySelector('span:last-child').textContent = 'Manual mode';
+    setStatusDot('warning');
+    cueOverlay.classList.add('hidden');
+
+    startTimer();
+    haptic(100);
+    say('Manual mode ready');
+  } else {
+    cueOverlay.classList.add('hidden');
+    // 3-2-1 countdown so the user has time to get into position
+    await runCountdown(3);
+    startTimer();
+    haptic(100);
+    say('Let\'s go');
+    loop();
+  }
+
+  // Restore button labels for next time
+  startBtn.querySelector('span').textContent = 'Start Workout';
+  startBtn.disabled = false;
+  startNoCameraBtn.disabled = false;
 }
 
-async function doStartWorkout() {
-  startBtn.querySelector("span").textContent = "Loading...";
-  startBtn.disabled = true;
-  try {
-    if (!landmarker) {
-      startBtn.querySelector("span").textContent = "Loading AI model...";
-      await initLandmarker();
-    }
-    startBtn.querySelector("span").textContent = "Opening camera...";
-    await startCamera();
-  } catch (err) {
-    startBtn.querySelector("span").textContent = "Start Workout";
-    startBtn.disabled = false;
-    if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
-      alert("Camera access denied.\n\nPlease allow camera permission:\n• iOS Safari: Settings > Safari > Camera\n• Android Chrome: Tap lock icon > Permissions > Camera");
-    } else if (err.name === "NotFoundError" || err.name === "DevicesNotFoundError") {
-      alert("No camera found on this device.");
-    } else if (err.name === "NotReadableError" || err.name === "TrackStartError") {
-      alert("Camera is in use by another app. Close other apps using the camera and try again.");
-    } else {
-      alert("Could not start: " + err.message + "\n\nTry refreshing the page.");
-    }
-    return;
+function describeCameraError(err) {
+  const name = err && err.name;
+  if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+    return 'Camera permission denied. Allow camera access in your browser to use auto tracking.';
   }
+  if (name === 'NotFoundError' || name === 'OverconstrainedError') {
+    return 'No camera found. Switched to manual mode.';
+  }
+  if (name === 'NotReadableError') {
+    return 'Camera is in use by another app. Switched to manual mode.';
+  }
+  if (err && /MediaPipe/i.test(err.message || '')) {
+    return 'Couldn\'t load AI model. Check your connection and reload.';
+  }
+  return 'Camera unavailable. Switched to manual mode.';
+}
 
-  // Countdown
-  await doCountdown();
-
-  running = true; paused = false; phase = "standing"; repCount = 0;
-  minAngle = 180; hadValgus = false; hadLean = false;
-  setData = []; formScore = 100; repStartTime = 0;
-
-  repsEl.textContent = "0"; depthEl.textContent = "--"; phaseEl.textContent = "standing";
-  angleEl.textContent = "--"; scoreValue.textContent = "--";
-  updateScoreRing(0); depthCard.className = "stat-card stat-depth";
-
-  controlsSection.classList.add("hidden");
-  workoutCtrl.classList.remove("hidden");
-  camFlipBtn.classList.remove("hidden");
-  summaryEl.classList.add("hidden");
-  restTimerEl.classList.add("hidden");
-  aiCoaching.classList.add("hidden");
-  aiCoachBtn.classList.remove("hidden");
-  aiCoachBtnText.textContent = "Get AI Coaching";
-  aiCoachBtn.disabled = false;
-
-  const nm = settings.userName;
-  startTimer(); haptic(100); say(nm ? `let's cook ${nm}` : "let's gooo");
-  loop();
+function runCountdown(seconds) {
+  return new Promise((resolve) => {
+    let n = seconds;
+    countdownNum.textContent = String(n);
+    countdownEl.classList.remove('hidden');
+    haptic(20);
+    const tick = () => {
+      n -= 1;
+      if (n <= 0) {
+        countdownEl.classList.add('hidden');
+        haptic([40, 30, 40]);
+        resolve();
+        return;
+      }
+      countdownNum.textContent = String(n);
+      countdownNum.classList.remove('pulse');
+      // force reflow to restart animation
+      void countdownNum.offsetWidth;
+      countdownNum.classList.add('pulse');
+      haptic(20);
+      setTimeout(tick, 1000);
+    };
+    setTimeout(tick, 1000);
+  });
 }
 
 function pauseWorkout() {
   paused = !paused;
   if (paused) {
     pauseBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg> Resume';
-    setDot(""); hudStatus.querySelector("span:last-child").textContent = "Paused";
+    setStatusDot('');
+    hudStatus.querySelector('span:last-child').textContent = 'Paused';
+    elapsedMsBeforePause += Date.now() - timerStart;
+    timerStart = 0;
     stopTimer();
   } else {
     pauseBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> Pause';
-    startTimer(); loop();
+    startTimer();
+    if (!noCameraMode) loop();
   }
 }
 
 function finishWorkout() {
-  running = false; paused = false; stopTimer();
-  const duration = fmtTime(Date.now() - timerStart);
-  workoutCtrl.classList.add("hidden");
-  camFlipBtn.classList.add("hidden");
-  hudTempo.classList.add("hidden");
+  running = false;
+  paused = false;
+  stopTimer();
 
-  if (!setData.length) { resetForNewSet(); return; }
+  const finalElapsed = elapsedMsBeforePause + (timerStart ? Date.now() - timerStart : 0);
+  const duration = fmtTime(finalElapsed);
+  stopCameraStream();
 
-  const avgDepth = Math.round(setData.reduce((s,r) => s + r.minAngle, 0) / setData.length);
-  const avgScore = Math.round(setData.reduce((s,r) => s + r.score, 0) / setData.length);
-  const bestRep = Math.max(...setData.map(r => r.score));
-  const avgTempo = Math.round(setData.reduce((s,r) => s + r.tempoMs, 0) / setData.length / 100) / 10;
-  const grade = avgScore >= 80 ? "A" : avgScore >= 60 ? "B" : "C";
+  // Show summary
+  workoutCtrl.classList.add('hidden');
+  manualRepBtn.classList.add('hidden');
 
-  const summaryTitle = D("summaryTitle");
-  if (settings.userName) {
-    const titles = grade === "A" ? [`${settings.userName} ate that`, `slay ${settings.userName}`, `${settings.userName} cooked`] :
-                   grade === "B" ? [`solid set ${settings.userName}`, `not bad ${settings.userName}`] :
-                   [`keep going ${settings.userName}`, `${settings.userName}, we're locking in`];
-    summaryTitle.textContent = titles[Math.floor(Math.random() * titles.length)];
-  } else {
-    summaryTitle.textContent = grade === "A" ? "you ate that" : grade === "B" ? "solid set" : "keep grinding";
+  if (setData.length === 0) {
+    startBtn.classList.remove('hidden');
+    startNoCameraBtn.classList.remove('hidden');
+    startBtn.querySelector('span').textContent = 'Start Workout';
+    startBtn.disabled = false;
+    startNoCameraBtn.disabled = false;
+    return;
   }
   summaryGrade.textContent = grade;
   summaryGrade.className = "summary-grade" + (grade === "B" ? " b" : grade === "C" ? " c" : "");
@@ -685,18 +965,37 @@ function finishWorkout() {
     say(grade === "A" ? "you ate that!" : grade === "B" ? "solid work" : "we're leveling up");
   }
 
-  summaryEl.classList.remove("hidden");
+  haptic([50, 100, 50]);
+  say(grade === 'A' ? 'Great set!' : grade === 'B' ? 'Good work, keep improving' : 'Keep practicing your form');
+
+  if (stream) {
+    stream.getTracks().forEach((t) => t.stop());
+    stream = null;
+  }
 }
 
 function resetForNewSet() {
-  summaryEl.classList.add("hidden"); restTimerEl.classList.add("hidden");
-  controlsSection.classList.remove("hidden");
-  startBtn.querySelector("span").textContent = "Start Workout";
+  summaryEl.classList.add('hidden');
+  startBtn.classList.remove('hidden');
+  startNoCameraBtn.classList.remove('hidden');
+  startBtn.querySelector('span').textContent = 'Start Workout';
   startBtn.disabled = false;
-  repsEl.textContent = "0"; depthEl.textContent = "--"; phaseEl.textContent = "idle";
-  angleEl.textContent = "--"; scoreValue.textContent = "--";
-  updateScoreRing(0); hudTimer.textContent = "00:00";
-  setDot(""); hudStatus.querySelector("span:last-child").textContent = "Ready";
+  startNoCameraBtn.disabled = false;
+  noCameraMode = false;
+
+  repsEl.textContent = '0';
+  depthEl.textContent = '--';
+  phaseEl.textContent = 'idle';
+  angleEl.textContent = '--';
+  scoreValue.textContent = '--';
+  updateScoreRing(0);
+  hudTimer.textContent = '00:00';
+  timerStart = 0;
+  elapsedMsBeforePause = 0;
+  setStatusDot('');
+  hudStatus.querySelector('span:last-child').textContent = 'Ready';
+  manualRepBtn.classList.add('hidden');
+  manualMode = false;
 }
 
 // ── AI Coaching ─────────────────────────────────────────────
@@ -710,10 +1009,11 @@ aiCoachBtn.addEventListener("click", async () => {
   aiCoachBtnText.textContent = "Analyzing...";
   aiCoachBtn.disabled = true;
 
-  const avgScore = Math.round(setData.reduce((s,r) => s + r.score, 0) / setData.length);
-  const avgDepth = Math.round(setData.reduce((s,r) => s + r.minAngle, 0) / setData.length);
-  const avgTempo = Math.round(setData.reduce((s,r) => s + r.tempoMs, 0) / setData.length / 100) / 10;
-  const grade = avgScore >= 80 ? "A" : avgScore >= 60 ? "B" : "C";
+startBtn.addEventListener('click', () => startWorkout());
+startNoCameraBtn.addEventListener('click', () => startWorkout({ skipCamera: true }));
+pauseBtn.addEventListener('click', pauseWorkout);
+finishBtn.addEventListener('click', finishWorkout);
+newSetBtn.addEventListener('click', resetForNewSet);
 
   try {
     const res = await fetch("/api/coach", {
@@ -736,31 +1036,44 @@ aiCoachBtn.addEventListener("click", async () => {
   }
 });
 
-// ── Share ────────────────────────────────────────────────────
-shareBtn.addEventListener("click", async () => {
-  if (!setData.length) return;
-  const avgScore = Math.round(setData.reduce((s,r) => s + r.score, 0) / setData.length);
-  const grade = avgScore >= 80 ? "A" : avgScore >= 60 ? "B" : "C";
-  const text = `postur \u2014 just cooked a set \u{1F525}\n\nReps: ${setData.length}\nGrade: ${grade}\nAvg Score: ${avgScore}/100\n\npostur \u2014 AI squat form coach`;
-  if (navigator.share) {
-    try { await navigator.share({ title: "postur Results", text }); } catch {}
-  } else {
-    try { await navigator.clipboard.writeText(text); alert("Results copied to clipboard!"); } catch { alert(text); }
+manualRepBtn.addEventListener('click', () => {
+  if (!running || paused || !manualMode) return;
+  repCount++;
+  const repScore = 75;
+  setData.push({
+    minAngle: settings.depthTarget + 10,
+    hadValgus: false,
+    hadLean: false,
+    score: repScore,
+    depthLabel: 'manual',
+  });
+  repsEl.textContent = String(repCount);
+  phaseEl.textContent = 'manual';
+  angleEl.textContent = '--';
+  updateScoreRing(repScore);
+  showRepFlash(repCount);
+  say(`${repCount}`);
+});
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden' && running && !paused) {
+    pauseWorkout();
   }
 });
 
-// ── Events ───────────────────────────────────────────────────
-startBtn.addEventListener("click", startWorkout);
-pauseBtn.addEventListener("click", pauseWorkout);
-finishBtn.addEventListener("click", finishWorkout);
-newSetBtn.addEventListener("click", () => { startRest(); });
-audioToggle.addEventListener("click", () => {
-  audioOn = !audioOn;
-  audioToggle.classList.toggle("muted", !audioOn);
-  if (!audioOn) speechSynthesis?.cancel();
+window.addEventListener('beforeunload', () => {
+  running = false;
+  paused = false;
+  stopTimer();
+  stopCameraStream();
 });
 
-// ── Service Worker ───────────────────────────────────────────
-if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => { navigator.serviceWorker.register("./sw.js").catch(() => {}); });
+/* ---------- Service Worker ----------------------------------- */
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js')
+      .then((registration) => registration.update())
+      .catch(() => {});
+  });
 }

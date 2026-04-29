@@ -93,6 +93,11 @@ This will:
 - **Enter**: Toggle selected setting
 - **Q**: Quit application
 
+### Android Beta Wrapper
+
+An Android wrapper app is available in `android_app/` for device testing and distribution.
+See `android_app/README.md` for setup and run instructions.
+
 ### New Features
 
 #### Enhanced UI

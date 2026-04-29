@@ -1,7 +1,6 @@
 """
 Utility functions for the posture correction app.
 """
-import math
 import numpy as np
 
 
