@@ -264,24 +264,44 @@ async function initLandmarker() {
   const vision = await FilesetResolver.forVisionTasks(
     "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12/wasm"
   );
-  landmarker = await PoseLandmarker.createFromOptions(vision, {
-    baseOptions: {
-      modelAssetPath: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task",
-      delegate: "GPU",
-    },
-    numPoses: 1,
-    runningMode: "VIDEO",
-  });
+  // Try GPU first, fall back to CPU on mobile devices
+  try {
+    landmarker = await PoseLandmarker.createFromOptions(vision, {
+      baseOptions: {
+        modelAssetPath: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task",
+        delegate: "GPU",
+      },
+      numPoses: 1,
+      runningMode: "VIDEO",
+    });
+  } catch {
+    landmarker = await PoseLandmarker.createFromOptions(vision, {
+      baseOptions: {
+        modelAssetPath: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task",
+        delegate: "CPU",
+      },
+      numPoses: 1,
+      runningMode: "VIDEO",
+    });
+  }
 }
 
 // ── Camera ───────────────────────────────────────────────────
 async function startCamera() {
   if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
-  stream = await navigator.mediaDevices.getUserMedia({
-    video: { facingMode: settings.frontCam ? "user" : "environment", width: { ideal: 720 }, height: { ideal: 960 } },
-    audio: false,
-  });
+  const facing = settings.frontCam ? "user" : "environment";
+  // Try ideal facingMode first, fall back to any camera
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: facing }, width: { ideal: 720 }, height: { ideal: 960 } },
+      audio: false,
+    });
+  } catch {
+    stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+  }
   video.srcObject = stream;
+  video.setAttribute("playsinline", "true");
+  video.setAttribute("muted", "true");
   await video.play();
   placeholder.classList.add("hidden");
 }
@@ -471,15 +491,23 @@ async function startWorkout() {
   startBtn.querySelector("span").textContent = "Loading...";
   startBtn.disabled = true;
   try {
-    if (!landmarker) await initLandmarker();
+    if (!landmarker) {
+      startBtn.querySelector("span").textContent = "Loading AI model...";
+      await initLandmarker();
+    }
+    startBtn.querySelector("span").textContent = "Opening camera...";
     await startCamera();
   } catch (err) {
     startBtn.querySelector("span").textContent = "Start Workout";
     startBtn.disabled = false;
     if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
-      alert("Camera access denied. Please allow camera permission in your browser settings to use postur.");
+      alert("Camera access denied.\n\nPlease allow camera permission:\n• iOS Safari: Settings > Safari > Camera\n• Android Chrome: Tap lock icon > Permissions > Camera");
+    } else if (err.name === "NotFoundError" || err.name === "DevicesNotFoundError") {
+      alert("No camera found on this device.");
+    } else if (err.name === "NotReadableError" || err.name === "TrackStartError") {
+      alert("Camera is in use by another app. Close other apps using the camera and try again.");
     } else {
-      alert("Could not start: " + err.message);
+      alert("Could not start: " + err.message + "\n\nTry refreshing the page.");
     }
     return;
   }
