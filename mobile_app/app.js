@@ -79,6 +79,7 @@ const closeSettings = $('closeSettings');
 
 const onboardingEl   = $('onboarding');
 const onboardingNext = $('onboardingNext');
+const camFlipBtn     = $('camFlipBtn');
 
 // Aliases used throughout the rest of the file (legacy short names)
 const D = $;
@@ -846,7 +847,7 @@ async function flipCamera() {
   saveSets();
   await startCamera();
 }
-camFlipBtn.addEventListener("click", flipCamera);
+if (camFlipBtn) camFlipBtn.addEventListener("click", flipCamera);
 
 // ── Pose Drawing ─────────────────────────────────────────────
 const SKEL = [[11,13],[13,15],[12,14],[14,16],[11,12],[11,23],[12,24],[23,24],[23,25],[25,27],[24,26],[26,28]];
@@ -1065,8 +1066,8 @@ function stopCameraStream() {
   cameraWrap.classList.remove('is-front');
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 }
-skipRest.addEventListener("click", endRest);
-addRest.addEventListener("click", () => { restRemaining += 30; });
+// (skipRest/addRest event listeners removed — rest-timer UI doesn't exist
+// in the HTML; these were dead references that crashed top-level init.)
 
 // ── Camera Permission Pre-Ask ────────────────────────────────
 function showCamPermission() {
