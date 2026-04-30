@@ -192,8 +192,11 @@
 
           <!-- Camera placeholder -->
           <div id="cameraPlaceholder" class="camera-placeholder">
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.3)" stroke-width="1.5" stroke-linecap="round"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
-            <p id="cameraPlaceholderText">Tap Start to begin</p>
+            <div class="placeholder-icon">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
+            </div>
+            <p class="placeholder-title">Ready</p>
+            <p id="cameraPlaceholderText" class="placeholder-sub">Tap start when you are</p>
           </div>
 
           <!-- Pre-workout countdown overlay -->
@@ -211,8 +214,28 @@
         </div>
       </section>
 
-      <!-- Stats strip -->
-      <section class="stats-strip">
+      <!-- Pre-workout home card (shown when not running) -->
+      <section id="homeCard" class="home-card">
+        <div class="home-card-row">
+          <div class="home-stat">
+            <span class="home-stat-value" id="homeStreak">0</span>
+            <span class="home-stat-label">day streak</span>
+          </div>
+          <div class="home-divider"></div>
+          <div class="home-stat">
+            <span class="home-stat-value" id="homeSets">0</span>
+            <span class="home-stat-label">total sets</span>
+          </div>
+          <div class="home-divider"></div>
+          <div class="home-stat">
+            <span class="home-stat-value" id="homeAvg">--</span>
+            <span class="home-stat-label">avg score</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Stats strip (only visible during/after a workout) -->
+      <section class="stats-strip hidden" id="statsStrip">
         <div class="stat-card stat-reps">
           <span class="stat-label">Reps</span>
           <strong class="stat-value" id="reps">0</strong>

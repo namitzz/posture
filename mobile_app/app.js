@@ -40,7 +40,13 @@ const angleEl       = $('angle');
 const depthCard     = document.querySelector('.stat-depth');
 
 const startBtn      = $('startBtn');
-const startNoCameraBtn = $('startNoCameraBtn');
+// startNoCameraBtn was an old "skip camera" button; it's been removed from the UI
+// since camera failure auto-falls-back to manual mode. Stub keeps legacy refs safe.
+const startNoCameraBtn = $('startNoCameraBtn') || {
+  disabled: false,
+  classList: { add() {}, remove() {}, toggle() {} },
+  addEventListener() {},
+};
 const workoutCtrl   = $('workoutControls');
 const pauseBtn      = $('pauseBtn');
 const finishBtn     = $('finishBtn');
@@ -62,73 +68,13 @@ const settingsBtn   = $('settingsBtn');
 const settingsPanel = $('settingsPanel');
 const closeSettings = $('closeSettings');
 
-/* ---------- Settings (persisted) ----------------------------- */
-const DEFAULTS = {
-  frontCam: false,
-  voice: true,
-  haptic: true,
-  depthTarget: 90,
-  audioEnabled: true,
-};
+const onboardingEl   = $('onboarding');
+const onboardingNext = $('onboardingNext');
 
-let settings = { ...DEFAULTS, ...loadJSON('postur_settings') };
-applySettingsToUI();
-
-function loadJSON(key) {
-  try { return JSON.parse(localStorage.getItem(key)) || {}; }
-  catch { return {}; }
-}
-
-function saveSettings() {
-  localStorage.setItem('postur_settings', JSON.stringify(settings));
-}
-
-function applySettingsToUI() {
-  $('setFrontCam').checked = settings.frontCam;
-  $('setVoice').checked    = settings.voice;
-  $('setHaptic').checked   = settings.haptic;
-  $('setDepth').value      = settings.depthTarget;
-}
-
-$('setFrontCam').addEventListener('change', (e) => { settings.frontCam = e.target.checked; saveSettings(); });
-$('setVoice').addEventListener('change', (e) => { settings.voice = e.target.checked; saveSettings(); });
-$('setHaptic').addEventListener('change', (e) => { settings.haptic = e.target.checked; saveSettings(); });
-$('setDepth').addEventListener('change', (e) => {
-  settings.depthTarget = Math.max(60, Math.min(120, +e.target.value || 90));
-  e.target.value = settings.depthTarget;
-  saveSettings();
-});
-
-/* ---------- State -------------------------------------------- */
-let landmarker    = null;
-let stream        = null;
-let running       = false;
-let paused        = false;
-let noCameraMode  = false;
-let audioEnabled  = settings.audioEnabled !== false;
-let phase         = 'standing';   // standing | descending | bottom | ascending
-let repCount      = 0;
-let minAngle      = 180;
-let hadValgus     = false;
-let hadLean       = false;
-let setData       = [];           // per-rep data
-let timerStart    = 0;
-let elapsedMsBeforePause = 0;
-let timerInterval = null;
-let lastCueTime   = 0;
-let lastCueText   = '';
-let formScore     = 100;          // live form score
-let manualMode    = false;
-let wakeLock      = null;         // Screen Wake Lock sentinel
-let lastPersonSeenAt = 0;         // performance.now() of last successful detection
-
-const THRESHOLDS = {
-  descent:  170,
-  bottom:   150,
-  ascent:   155,
-  stand:    168,
-  kneeValgusRatio: 0.12,
-};
+// Aliases used throughout the rest of the file (legacy short names)
+const D = $;
+const loadJ = (k) => { try { return JSON.parse(localStorage.getItem(k)) || {}; } catch { return {}; } };
+const saveJ = (k, v) => localStorage.setItem(k, JSON.stringify(v));
 
 /* ---------- Utilities ---------------------------------------- */
 
@@ -144,19 +90,6 @@ function calcAngle(a, b, c) {
   return (Math.acos(Math.max(-1, Math.min(1, dot / mag))) * 180) / Math.PI;
 }
 
-function say(text) {
-  if (!settings.voice || !audioEnabled || !window.speechSynthesis) return;
-  const u = new SpeechSynthesisUtterance(text);
-  u.rate = 1.1;
-  u.pitch = 0.95;
-  window.speechSynthesis.cancel();
-  window.speechSynthesis.speak(u);
-}
-
-function haptic(pattern) {
-  if (!settings.haptic || !navigator.vibrate) return;
-  navigator.vibrate(pattern);
-}
 function say(t) {
   if (!settings.voice || !audioOn || !window.speechSynthesis) return;
   const u = new SpeechSynthesisUtterance(t); u.rate = 1.1; u.pitch = 0.95;
@@ -196,6 +129,9 @@ let lastCueTime = 0, lastCueMsg = "", formScore = 100;
 let repStartTime = 0;
 let restInterval = null, restRemaining = 0;
 let standingHipY = null, standingKneeY = null, depthGuideY = null;
+let noCameraMode = false, manualMode = false;
+let elapsedMsBeforePause = 0, lastPersonSeenAt = 0;
+let wakeLock = null;
 const THRESH = { descent:170, bottom:150, ascent:155, stand:168, valgus:0.12 };
 
 // ── Name Screen ──────────────────────────────────────────────
@@ -231,6 +167,21 @@ function updateGreeting() {
     if (nameDisp) nameDisp.textContent = "not set";
   }
 }
+
+function updateHomeCard() {
+  const card = D("homeCard");
+  if (!card) return;
+  const sets = loadJ("postur_history").sets || [];
+  const streak = loadJ("postur_streak");
+  const totalSets = sets.length;
+  const avg = totalSets
+    ? Math.round(sets.reduce((sum, s) => sum + (s.score || 0), 0) / totalSets)
+    : null;
+  D("homeStreak").textContent = streak.current || 0;
+  D("homeSets").textContent = totalSets;
+  D("homeAvg").textContent = avg !== null ? avg : "--";
+}
+setTimeout(() => { updateHomeCard(); updateStreak(); }, 0);
 
 D("changeNameBtn").addEventListener("click", () => {
   const name = prompt("Enter your name:", settings.userName || "");
@@ -296,6 +247,17 @@ D("clearDataBtn").addEventListener("click", () => {
     alert("Data cleared.");
   }
 });
+
+/* ---------- Wake Lock --------------------------------------- */
+async function acquireWakeLock() {
+  if (!('wakeLock' in navigator)) return;
+  try {
+    wakeLock = await navigator.wakeLock.request('screen');
+    wakeLock.addEventListener('release', () => { wakeLock = null; });
+  } catch (err) {
+    console.warn('[WakeLock] Failed to acquire:', err);
+  }
+}
 
 /* ---------- iOS audio unlock --------------------------------- */
 // iOS Safari requires speechSynthesis.speak() to be called from inside a
@@ -988,6 +950,13 @@ function updateScoreRing(sc) {
   scoreValue.textContent = Math.round(sc);
 }
 function setDot(cls) { hudStatus.querySelector(".hud-dot").className = "hud-dot " + cls; }
+const setStatusDot = setDot;
+const runCountdown = (_n) => doCountdown();
+function openPanel(panel) { panel.classList.remove("hidden", "closing"); }
+function closePanel(panel) {
+  panel.classList.add("closing");
+  setTimeout(() => { panel.classList.add("hidden"); panel.classList.remove("closing"); }, 250);
+}
 function updateDepth(ka) {
   if (phase === "bottom" || phase === "descending") {
     if (ka <= settings.depthTarget) { depthEl.textContent = "Good"; depthCard.className = "stat-card stat-depth good"; }
@@ -1149,11 +1118,15 @@ async function startWorkout({ skipCamera = false } = {}) {
   depthCard.className = 'stat-card stat-depth';
 
   startBtn.classList.add('hidden');
+  D('warmupBtn').classList.add('hidden');
   startNoCameraBtn.classList.add('hidden');
   workoutCtrl.classList.remove('hidden');
   manualRepBtn.classList.toggle('hidden', !manualMode);
   summaryEl.classList.add('hidden');
   framingHint.classList.add('hidden');
+  // swap home card → live stats strip
+  D('homeCard').classList.add('hidden');
+  D('statsStrip').classList.remove('hidden');
 
   if (manualMode) {
     placeholder.classList.remove('hidden');
@@ -1316,11 +1289,16 @@ function finishWorkout() {
 function resetForNewSet() {
   summaryEl.classList.add('hidden');
   startBtn.classList.remove('hidden');
+  D('warmupBtn').classList.remove('hidden');
   startNoCameraBtn.classList.remove('hidden');
   startBtn.querySelector('span').textContent = 'Start Workout';
   startBtn.disabled = false;
   startNoCameraBtn.disabled = false;
   noCameraMode = false;
+  // swap live stats strip → home card
+  D('statsStrip').classList.add('hidden');
+  D('homeCard').classList.remove('hidden');
+  updateHomeCard();
 
   repsEl.textContent = '0';
   depthEl.textContent = '--';
