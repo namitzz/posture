@@ -1074,20 +1074,34 @@ function stopCameraStream() {
 // (skipRest/addRest event listeners removed — rest-timer UI doesn't exist
 // in the HTML; these were dead references that crashed top-level init.)
 
-// ── Camera Permission Pre-Ask ────────────────────────────────
-function showCamPermission() {
-  D("camPermission").classList.remove("hidden");
-}
-D("camPermAllow").addEventListener("click", () => {
-  localStorage.setItem("postur_cam_asked", "1");
-  D("camPermission").classList.add("hidden");
-  startWorkout();
-});
-D("camPermCancel").addEventListener("click", () => {
-  D("camPermission").classList.add("hidden");
-});
+// ── Camera Permission Pre-Ask (optional UI) ─────────────────
+const camPermissionModal = D('camPermission');
+const camPermAllowBtn = D('camPermAllow');
+const camPermCancelBtn = D('camPermCancel');
 
-async function startWorkout({ skipCamera = false } = {}) {
+function showCamPermission() {
+  if (!camPermissionModal) return;
+  camPermissionModal.classList.remove('hidden');
+}
+
+if (camPermAllowBtn && camPermissionModal) {
+  camPermAllowBtn.addEventListener('click', () => {
+    localStorage.setItem('postur_cam_asked', '1');
+    camPermissionModal.classList.add('hidden');
+    globalThis.startWorkout().catch((err) => {
+      console.error('[CamPerm] startWorkout threw:', err);
+      diagToast('startWorkout error: ' + (err && err.message || err), 'error');
+    });
+  });
+}
+
+if (camPermCancelBtn && camPermissionModal) {
+  camPermCancelBtn.addEventListener('click', () => {
+    camPermissionModal.classList.add('hidden');
+  });
+}
+
+globalThis.startWorkout = async function startWorkout({ skipCamera = false } = {}) {
   // Triggered from a real user gesture — unlock iOS audio + acquire wake lock now
   unlockAudio();
   acquireWakeLock();
@@ -1353,23 +1367,22 @@ if (!startBtn) {
     try {
       console.log('[Start] click fired', ev);
       diagToast('Start tapped');
-      // Always show the in-app permission dialog on first run so the user
-      // gets explicit visual feedback before the browser camera prompt.
+      // No backend/service is needed for camera permission; let the browser
+      // permission prompt run directly from this user gesture.
       if (!localStorage.getItem('postur_cam_asked')) {
-        showCamPermission();
-      } else {
-        startWorkout().catch(err => {
-          console.error('[Start] startWorkout threw:', err);
-          diagToast('startWorkout error: ' + (err && err.message || err), 'error');
-        });
+        localStorage.setItem('postur_cam_asked', '1');
       }
+      globalThis.startWorkout().catch(err => {
+        console.error('[Start] startWorkout threw:', err);
+        diagToast('startWorkout error: ' + (err && err.message || err), 'error');
+      });
     } catch (err) {
       console.error('[Start] handler threw:', err);
       diagToast('Click handler error: ' + (err && err.message || err), 'error');
     }
   });
 }
-startNoCameraBtn.addEventListener('click', () => startWorkout({ skipCamera: true }));
+startNoCameraBtn.addEventListener('click', () => globalThis.startWorkout({ skipCamera: true }));
 pauseBtn.addEventListener('click', pauseWorkout);
 finishBtn.addEventListener('click', finishWorkout);
 newSetBtn.addEventListener('click', resetForNewSet);
