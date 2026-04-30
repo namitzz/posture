@@ -1,3 +1,12 @@
+// Global error logging — surface silent failures to the console
+window.addEventListener('error', (e) => {
+  console.error('[GlobalError]', e.message, 'at', e.filename + ':' + e.lineno + ':' + e.colno, e.error);
+});
+window.addEventListener('unhandledrejection', (e) => {
+  console.error('[UnhandledPromise]', e.reason);
+});
+console.log('[Init] postur app.js parsing started');
+
 let FilesetResolver, PoseLandmarker;
 const MEDIAPIPE_VERSION = '0.10.14';
 const MEDIAPIPE_CDN_TIMEOUT_MS = 8000;
@@ -106,12 +115,14 @@ const DEFS = { frontCam:false, voice:true, haptic:true, countdown:true, depthTar
 let settings = { ...DEFS, ...loadJ("postur_settings") };
 function saveSets() { saveJ("postur_settings", settings); }
 function applyUI() {
-  D("setFrontCam").checked = settings.frontCam;
-  D("setVoice").checked = settings.voice;
-  D("setHaptic").checked = settings.haptic;
-  D("setCountdown").checked = settings.countdown;
-  D("setDepth").value = settings.depthTarget;
-  D("setRest").value = settings.restDuration;
+  // Defensive: settings panel elements might not all exist if HTML changes
+  const set = (id, prop, val) => { const el = D(id); if (el) el[prop] = val; };
+  set("setFrontCam", "checked", settings.frontCam);
+  set("setVoice", "checked", settings.voice);
+  set("setHaptic", "checked", settings.haptic);
+  set("setCountdown", "checked", settings.countdown);
+  set("setDepth", "value", settings.depthTarget);
+  set("setRest", "value", settings.restDuration);
 }
 applyUI();
 setTimeout(updateGreeting, 0);
@@ -1321,11 +1332,13 @@ const aiCoachBtnText = D("aiCoachBtnText");
 const aiCoaching = D("aiCoaching");
 const aiCoachingText = D("aiCoachingText");
 
+console.log('[Init] postur app.js loaded — wiring up start button');
 startBtn.addEventListener('click', () => {
+  console.log('[Start] button clicked, postur_cam_asked =', localStorage.getItem('postur_cam_asked'));
   if (!localStorage.getItem('postur_cam_asked')) {
     showCamPermission();
   } else {
-    startWorkout();
+    startWorkout().catch(err => console.error('[Start] startWorkout threw:', err));
   }
 });
 startNoCameraBtn.addEventListener('click', () => startWorkout({ skipCamera: true }));
