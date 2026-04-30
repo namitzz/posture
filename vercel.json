@@ -4,11 +4,6 @@
   "framework": null,
   "cleanUrls": true,
   "trailingSlash": false,
-  "functions": {
-    "api/*.js": {
-      "runtime": "@vercel/node@3.0.0"
-    }
-  },
   "rewrites": [
     {
       "source": "/api/:path*",
