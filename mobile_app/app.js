@@ -1088,6 +1088,23 @@ if (camPermAllowBtn && camPermissionModal) {
   camPermAllowBtn.addEventListener('click', () => {
     localStorage.setItem('postur_cam_asked', '1');
     camPermissionModal.classList.add('hidden');
+    startWorkout().catch((err) => {
+      console.error('[CamPerm] startWorkout threw:', err);
+      diagToast('startWorkout error: ' + (err && err.message || err), 'error');
+    });
+  });
+}
+
+if (camPermCancelBtn && camPermissionModal) {
+  camPermCancelBtn.addEventListener('click', () => {
+    camPermissionModal.classList.add('hidden');
+  });
+}
+
+if (camPermAllowBtn && camPermissionModal) {
+  camPermAllowBtn.addEventListener('click', () => {
+    localStorage.setItem('postur_cam_asked', '1');
+    camPermissionModal.classList.add('hidden');
     globalThis.startWorkout().catch((err) => {
       console.error('[CamPerm] startWorkout threw:', err);
       diagToast('startWorkout error: ' + (err && err.message || err), 'error');
@@ -1370,9 +1387,14 @@ if (!startBtn) {
       // No backend/service is needed for camera permission; let the browser
       // permission prompt run directly from this user gesture.
       if (!localStorage.getItem('postur_cam_asked')) {
-        localStorage.setItem('postur_cam_asked', '1');
+        D('camPermission').classList.remove('hidden');
+      } else {
+        startWorkout().catch(err => {
+          console.error('[Start] startWorkout threw:', err);
+          diagToast('startWorkout error: ' + (err && err.message || err), 'error');
+        });
       }
-      globalThis.startWorkout().catch(err => {
+      startWorkout().catch(err => {
         console.error('[Start] startWorkout threw:', err);
         diagToast('startWorkout error: ' + (err && err.message || err), 'error');
       });
