@@ -1356,7 +1356,7 @@ if (!startBtn) {
       // Always show the in-app permission dialog on first run so the user
       // gets explicit visual feedback before the browser camera prompt.
       if (!localStorage.getItem('postur_cam_asked')) {
-        showCamPermission();
+        D('camPermission').classList.remove('hidden');
       } else {
         startWorkout().catch(err => {
           console.error('[Start] startWorkout threw:', err);
