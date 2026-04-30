@@ -5,7 +5,12 @@ window.addEventListener('error', (e) => {
 window.addEventListener('unhandledrejection', (e) => {
   console.error('[UnhandledPromise]', e.reason);
 });
-console.log('[Init] postur app.js parsing started');
+const POSTUR_BUILD = 'v7-diag';
+console.log('[Init] postur', POSTUR_BUILD, 'app.js parsing started');
+// Stamp the page so we can verify (visually + via DOM) which build is loaded
+document.addEventListener('DOMContentLoaded', () => {
+  document.documentElement.dataset.posturBuild = POSTUR_BUILD;
+});
 
 let FilesetResolver, PoseLandmarker;
 const MEDIAPIPE_VERSION = '0.10.14';
@@ -1334,14 +1339,36 @@ const aiCoaching = D("aiCoaching");
 const aiCoachingText = D("aiCoachingText");
 
 console.log('[Init] postur app.js loaded — wiring up start button');
-startBtn.addEventListener('click', () => {
-  console.log('[Start] button clicked, postur_cam_asked =', localStorage.getItem('postur_cam_asked'));
-  if (!localStorage.getItem('postur_cam_asked')) {
-    showCamPermission();
-  } else {
-    startWorkout().catch(err => console.error('[Start] startWorkout threw:', err));
-  }
-});
+
+// Diagnostic: visible toast if the click handler ever throws or anything weird happens.
+function diagToast(msg, kind = 'info') {
+  showToast(msg, kind, 4000);
+  console.log('[Diag]', msg);
+}
+
+if (!startBtn) {
+  diagToast('Start button element not found in DOM!', 'error');
+} else {
+  startBtn.addEventListener('click', (ev) => {
+    try {
+      console.log('[Start] click fired', ev);
+      diagToast('Start tapped');
+      // Always show the in-app permission dialog on first run so the user
+      // gets explicit visual feedback before the browser camera prompt.
+      if (!localStorage.getItem('postur_cam_asked')) {
+        showCamPermission();
+      } else {
+        startWorkout().catch(err => {
+          console.error('[Start] startWorkout threw:', err);
+          diagToast('startWorkout error: ' + (err && err.message || err), 'error');
+        });
+      }
+    } catch (err) {
+      console.error('[Start] handler threw:', err);
+      diagToast('Click handler error: ' + (err && err.message || err), 'error');
+    }
+  });
+}
 startNoCameraBtn.addEventListener('click', () => startWorkout({ skipCamera: true }));
 pauseBtn.addEventListener('click', pauseWorkout);
 finishBtn.addEventListener('click', finishWorkout);
