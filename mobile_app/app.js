@@ -1353,16 +1353,15 @@ if (!startBtn) {
     try {
       console.log('[Start] click fired', ev);
       diagToast('Start tapped');
-      // Always show the in-app permission dialog on first run so the user
-      // gets explicit visual feedback before the browser camera prompt.
+      // No backend/service is needed for camera permission; let the browser
+      // permission prompt run directly from this user gesture.
       if (!localStorage.getItem('postur_cam_asked')) {
-        showCamPermission();
-      } else {
-        startWorkout().catch(err => {
-          console.error('[Start] startWorkout threw:', err);
-          diagToast('startWorkout error: ' + (err && err.message || err), 'error');
-        });
+        localStorage.setItem('postur_cam_asked', '1');
       }
+      startWorkout().catch(err => {
+        console.error('[Start] startWorkout threw:', err);
+        diagToast('startWorkout error: ' + (err && err.message || err), 'error');
+      });
     } catch (err) {
       console.error('[Start] handler threw:', err);
       diagToast('Click handler error: ' + (err && err.message || err), 'error');
