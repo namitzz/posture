@@ -1370,7 +1370,12 @@ if (!startBtn) {
       // No backend/service is needed for camera permission; let the browser
       // permission prompt run directly from this user gesture.
       if (!localStorage.getItem('postur_cam_asked')) {
-        localStorage.setItem('postur_cam_asked', '1');
+        D('camPermission').classList.remove('hidden');
+      } else {
+        startWorkout().catch(err => {
+          console.error('[Start] startWorkout threw:', err);
+          diagToast('startWorkout error: ' + (err && err.message || err), 'error');
+        });
       }
       startWorkout().catch(err => {
         console.error('[Start] startWorkout threw:', err);
