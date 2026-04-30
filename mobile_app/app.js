@@ -1101,7 +1101,24 @@ if (camPermCancelBtn && camPermissionModal) {
   });
 }
 
-async function startWorkout({ skipCamera = false } = {}) {
+if (camPermAllowBtn && camPermissionModal) {
+  camPermAllowBtn.addEventListener('click', () => {
+    localStorage.setItem('postur_cam_asked', '1');
+    camPermissionModal.classList.add('hidden');
+    globalThis.startWorkout().catch((err) => {
+      console.error('[CamPerm] startWorkout threw:', err);
+      diagToast('startWorkout error: ' + (err && err.message || err), 'error');
+    });
+  });
+}
+
+if (camPermCancelBtn && camPermissionModal) {
+  camPermCancelBtn.addEventListener('click', () => {
+    camPermissionModal.classList.add('hidden');
+  });
+}
+
+globalThis.startWorkout = async function startWorkout({ skipCamera = false } = {}) {
   // Triggered from a real user gesture — unlock iOS audio + acquire wake lock now
   unlockAudio();
   acquireWakeLock();
@@ -1387,7 +1404,7 @@ if (!startBtn) {
     }
   });
 }
-startNoCameraBtn.addEventListener('click', () => startWorkout({ skipCamera: true }));
+startNoCameraBtn.addEventListener('click', () => globalThis.startWorkout({ skipCamera: true }));
 pauseBtn.addEventListener('click', pauseWorkout);
 finishBtn.addEventListener('click', finishWorkout);
 newSetBtn.addEventListener('click', resetForNewSet);
