@@ -5,7 +5,7 @@ window.addEventListener('error', (e) => {
 window.addEventListener('unhandledrejection', (e) => {
   console.error('[UnhandledPromise]', e.reason);
 });
-const POSTUR_BUILD = 'v10-top-level-showcam';
+const POSTUR_BUILD = 'v11-delegated-camperm';
 
 // Defined at the top of the file so it's available immediately, regardless
 // of what happens later. Looks up the modal at call time (not at parse time).
@@ -14,6 +14,30 @@ window.showCamPermission = function showCamPermission() {
   if (modal) modal.classList.remove('hidden');
   else console.warn('[showCamPermission] #camPermission element not found');
 };
+
+// Document-level click delegation for the camera permission dialog buttons.
+// Attached at the top of the file so it works even if later top-level code
+// throws and halts script execution (which would skip per-element listeners).
+document.addEventListener('click', (e) => {
+  const allow = e.target.closest && e.target.closest('#camPermAllow');
+  const cancel = e.target.closest && e.target.closest('#camPermCancel');
+  if (allow) {
+    console.log('[CamPerm] allow clicked');
+    localStorage.setItem('postur_cam_asked', '1');
+    const modal = document.getElementById('camPermission');
+    if (modal) modal.classList.add('hidden');
+    if (typeof window.startWorkout === 'function') {
+      window.startWorkout().catch(err => console.error('[CamPerm] startWorkout threw:', err));
+    } else {
+      console.error('[CamPerm] startWorkout is not defined yet');
+      alert('startWorkout missing — see console');
+    }
+  } else if (cancel) {
+    console.log('[CamPerm] cancel clicked');
+    const modal = document.getElementById('camPermission');
+    if (modal) modal.classList.add('hidden');
+  }
+});
 console.log('[Init] postur', POSTUR_BUILD, 'app.js parsing started');
 // Stamp the page so we can verify (visually + via DOM) which build is loaded
 document.addEventListener('DOMContentLoaded', () => {
