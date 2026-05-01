@@ -5,7 +5,15 @@ window.addEventListener('error', (e) => {
 window.addEventListener('unhandledrejection', (e) => {
   console.error('[UnhandledPromise]', e.reason);
 });
-const POSTUR_BUILD = 'v9-globalthis-showcam';
+const POSTUR_BUILD = 'v10-top-level-showcam';
+
+// Defined at the top of the file so it's available immediately, regardless
+// of what happens later. Looks up the modal at call time (not at parse time).
+window.showCamPermission = function showCamPermission() {
+  const modal = document.getElementById('camPermission');
+  if (modal) modal.classList.remove('hidden');
+  else console.warn('[showCamPermission] #camPermission element not found');
+};
 console.log('[Init] postur', POSTUR_BUILD, 'app.js parsing started');
 // Stamp the page so we can verify (visually + via DOM) which build is loaded
 document.addEventListener('DOMContentLoaded', () => {
@@ -1079,14 +1087,8 @@ const camPermissionModal = D('camPermission');
 const camPermAllowBtn = D('camPermAllow');
 const camPermCancelBtn = D('camPermCancel');
 
-// Exposed on globalThis so click handlers in different scopes can reach it.
-// (Plain function declarations were inexplicably not visible from the start
-//  button handler in the deployed bundle — likely a service-worker rewrite
-//  quirk. Direct assignment to globalThis avoids it.)
-globalThis.showCamPermission = function showCamPermission() {
-  if (!camPermissionModal) return;
-  camPermissionModal.classList.remove('hidden');
-};
+// showCamPermission is defined at the top of the file (window.showCamPermission)
+// so it's available regardless of where in the script we call it from.
 
 if (camPermAllowBtn && camPermissionModal) {
   camPermAllowBtn.addEventListener('click', () => {
@@ -1374,7 +1376,7 @@ if (!startBtn) {
       // First-run: show the in-app explainer dialog before triggering the
       // browser camera prompt. Subsequent runs go straight to startWorkout.
       if (!localStorage.getItem('postur_cam_asked')) {
-        globalThis.showCamPermission();
+        window.showCamPermission();
       } else {
         globalThis.startWorkout().catch(err => {
           console.error('[Start] startWorkout threw:', err);
