@@ -5,7 +5,7 @@ window.addEventListener('error', (e) => {
 window.addEventListener('unhandledrejection', (e) => {
   console.error('[UnhandledPromise]', e.reason);
 });
-const POSTUR_BUILD = 'v12-hoisted-startworkout';
+const POSTUR_BUILD = 'v13-renamed-posturBeginWorkout';
 
 // Defined at the top of the file so it's available immediately, regardless
 // of what happens later. Looks up the modal at call time (not at parse time).
@@ -25,9 +25,9 @@ window.showCamPermission = function showCamPermission() {
 //   2. window.startWorkout (legacy explicit assignment)
 //   3. globalThis.startWorkout (Codex bot's earlier fix)
 function _resolveStartWorkout() {
-  if (typeof startWorkout === 'function') return startWorkout;
+  if (typeof posturBeginWorkout === 'function') return posturBeginWorkout;
+  if (typeof window !== 'undefined' && typeof window.posturBeginWorkout === 'function') return window.posturBeginWorkout;
   if (typeof window !== 'undefined' && typeof window.startWorkout === 'function') return window.startWorkout;
-  if (typeof globalThis !== 'undefined' && typeof globalThis.startWorkout === 'function') return globalThis.startWorkout;
   return null;
 }
 
@@ -1132,7 +1132,7 @@ if (camPermAllowBtn && camPermissionModal) {
   camPermAllowBtn.addEventListener('click', () => {
     localStorage.setItem('postur_cam_asked', '1');
     camPermissionModal.classList.add('hidden');
-    startWorkout().catch((err) => {
+    posturBeginWorkout().catch((err) => {
       console.error('[CamPerm] startWorkout threw:', err);
       diagToast('startWorkout error: ' + (err && err.message || err), 'error');
     });
@@ -1145,10 +1145,10 @@ if (camPermCancelBtn && camPermissionModal) {
   });
 }
 
-// Plain async function declaration so it gets hoisted into the global scope
-// at parse time. Also explicitly mirror to window.startWorkout for the
-// document-level click delegation at the top of the file.
-async function startWorkout({ skipCamera = false } = {}) {
+// Renamed from startWorkout → posturBeginWorkout to avoid any chance of
+// collision with browser auto-globals from id="start*" elements or other
+// quirks. Explicitly assigned to window right after the declaration.
+async function posturBeginWorkout({ skipCamera = false } = {}) {
   // Triggered from a real user gesture — unlock iOS audio + acquire wake lock now
   unlockAudio();
   acquireWakeLock();
@@ -1233,6 +1233,10 @@ async function startWorkout({ skipCamera = false } = {}) {
   startBtn.disabled = false;
   startNoCameraBtn.disabled = false;
 }
+// Explicitly mirror to window so callers (delegated handler at top of file,
+// per-element handlers further down) can find it under any of these names.
+window.posturBeginWorkout = posturBeginWorkout;
+window.startWorkout = posturBeginWorkout;
 
 function describeCameraError(err) {
   const name = err && err.name;
@@ -1419,7 +1423,7 @@ if (!startBtn) {
       if (!localStorage.getItem('postur_cam_asked')) {
         window.showCamPermission();
       } else {
-        globalThis.startWorkout().catch(err => {
+        posturBeginWorkout().catch(err => {
           console.error('[Start] startWorkout threw:', err);
           diagToast('startWorkout error: ' + (err && err.message || err), 'error');
         });
@@ -1430,7 +1434,7 @@ if (!startBtn) {
     }
   });
 }
-startNoCameraBtn.addEventListener('click', () => globalThis.startWorkout({ skipCamera: true }));
+startNoCameraBtn.addEventListener('click', () => posturBeginWorkout({ skipCamera: true }));
 pauseBtn.addEventListener('click', pauseWorkout);
 finishBtn.addEventListener('click', finishWorkout);
 newSetBtn.addEventListener('click', resetForNewSet);
