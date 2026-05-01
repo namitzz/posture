@@ -1,7 +1,35 @@
 {
   "permissions": {
     "allow": [
-      "Bash(git checkout *)"
+      "Bash(git checkout *)",
+      "Bash(gh issue *)",
+      "Bash(python -m py_compile src/main.py src/ai_coach.py src/pose_detector.py src/squat_analyzer.py src/audio_cues.py src/utils.py)",
+      "Bash(python -m pytest tests/ --tb=short -q)",
+      "Bash(python -m pytest tests/ -q)",
+      "Bash(where gh *)",
+      "PowerShell(Get-Command gh -ErrorAction SilentlyContinue)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(node --check mobile_app/app.js)",
+      "Bash(git remote *)",
+      "Bash(git fetch *)",
+      "Bash(git rev-list *)",
+      "Bash(curl -sI https://posture-dusky.vercel.app/app.js)",
+      "Bash(curl -s https://posture-dusky.vercel.app/app.js)",
+      "Bash(curl -s https://posture-dusky.vercel.app/)",
+      "Bash(curl -s https://posture-dusky.vercel.app/sw.js)",
+      "Bash(curl -s https://posture-dusky.vercel.app/app.js -o /tmp/prod-app.js)",
+      "Bash(node --check /tmp/prod-app.js)",
+      "Read(//tmp/**)",
+      "Bash(curl -s https://posture-dusky.vercel.app/styles.css -o /tmp/prod-styles.css)",
+      "Bash(curl -s https://posture-dusky.vercel.app/ -o /tmp/prod-index.html)",
+      "Bash(curl -s https://posture-dusky.vercel.app/app.js -o /tmp/prod-v7.js)",
+      "Bash(sed -n '1335,1360p' /tmp/prod-v7.js)",
+      "Bash(node -e \"const fs=require\\('fs'\\); const lines=fs.readFileSync\\('/tmp/v8b6dde3.js','utf8'\\).split\\('\\\\n'\\); let depth=0; for\\(let i=0; i<lines.length; i++\\){ const l=lines[i]; for\\(const c of l\\){ if\\(c==='{'\\) depth++; else if\\(c==='}'\\) depth--; } if\\(i>=1070 && i<=1080\\) console.log\\(\\(i+1\\)+'\\\\t depth='+depth+'\\\\t'+l\\); }\")",
+      "Bash(git pull *)",
+      "Bash(curl -s https://posture-plum.vercel.app/app.js)",
+      "Bash(curl -s https://posture-plum.vercel.app/app.js -o /tmp/prod.js)"
     ]
   }
 }
