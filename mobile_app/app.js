@@ -5,7 +5,7 @@ window.addEventListener('error', (e) => {
 window.addEventListener('unhandledrejection', (e) => {
   console.error('[UnhandledPromise]', e.reason);
 });
-const POSTUR_BUILD = 'v7-diag';
+const POSTUR_BUILD = 'v8-fix-dup-calls';
 console.log('[Init] postur', POSTUR_BUILD, 'app.js parsing started');
 // Stamp the page so we can verify (visually + via DOM) which build is loaded
 document.addEventListener('DOMContentLoaded', () => {
@@ -1101,23 +1101,6 @@ if (camPermCancelBtn && camPermissionModal) {
   });
 }
 
-if (camPermAllowBtn && camPermissionModal) {
-  camPermAllowBtn.addEventListener('click', () => {
-    localStorage.setItem('postur_cam_asked', '1');
-    camPermissionModal.classList.add('hidden');
-    globalThis.startWorkout().catch((err) => {
-      console.error('[CamPerm] startWorkout threw:', err);
-      diagToast('startWorkout error: ' + (err && err.message || err), 'error');
-    });
-  });
-}
-
-if (camPermCancelBtn && camPermissionModal) {
-  camPermCancelBtn.addEventListener('click', () => {
-    camPermissionModal.classList.add('hidden');
-  });
-}
-
 globalThis.startWorkout = async function startWorkout({ skipCamera = false } = {}) {
   // Triggered from a real user gesture — unlock iOS audio + acquire wake lock now
   unlockAudio();
@@ -1384,20 +1367,16 @@ if (!startBtn) {
     try {
       console.log('[Start] click fired', ev);
       diagToast('Start tapped');
-      // No backend/service is needed for camera permission; let the browser
-      // permission prompt run directly from this user gesture.
+      // First-run: show the in-app explainer dialog before triggering the
+      // browser camera prompt. Subsequent runs go straight to startWorkout.
       if (!localStorage.getItem('postur_cam_asked')) {
-        D('camPermission').classList.remove('hidden');
+        showCamPermission();
       } else {
         startWorkout().catch(err => {
           console.error('[Start] startWorkout threw:', err);
           diagToast('startWorkout error: ' + (err && err.message || err), 'error');
         });
       }
-      startWorkout().catch(err => {
-        console.error('[Start] startWorkout threw:', err);
-        diagToast('startWorkout error: ' + (err && err.message || err), 'error');
-      });
     } catch (err) {
       console.error('[Start] handler threw:', err);
       diagToast('Click handler error: ' + (err && err.message || err), 'error');

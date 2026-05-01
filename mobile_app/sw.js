@@ -1,4 +1,4 @@
-const CACHE_NAME = 'postur-v7';
+const CACHE_NAME = 'postur-v8';
 const STATIC_ASSETS = [
   './',
   './index.html',
