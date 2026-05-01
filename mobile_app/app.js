@@ -7,7 +7,7 @@ window.addEventListener('unhandledrejection', (e) => {
   console.error('[UnhandledPromise]', e.reason);
 });
 
-const POSTUR_BUILD = 'v15-exercises-voice-doubletap';
+const POSTUR_BUILD = 'v14-fixed-mediapipe-startworkout';
 console.log('[Init] postur', POSTUR_BUILD, 'app.js parsing started');
 
 /* ---------- DOM helpers ------------------------------------- */
@@ -205,111 +205,26 @@ const DEFS = {
   frontCam: true,
   voice: true,
   haptic: true,
-  countdown: false,
+  countdown: true,
   depthTarget: 90,
   restDuration: 60,
   userName: '',
-  exercise: 'squat',
 };
 
-// Exercise config — central source of truth so we don't scatter names.
-const EXERCISES = {
-  squat:  { label: 'Squat',   mode: 'camera', manualLabel: 'squat manual'   },
-  lunge:  { label: 'Lunge',   mode: 'manual', manualLabel: 'lunge manual'   },
-  pushup: { label: 'Push-up', mode: 'manual', manualLabel: 'push-up manual' },
-  plank:  { label: 'Plank',   mode: 'manual', manualLabel: 'plank manual'   },
-};
-function getExercise() {
-  return EXERCISES[settings.exercise] || EXERCISES.squat;
-}
-
-// Load + safe migration. Existing users may have postur_settings without
-// `frontCam` or `exercise`. Don't overwrite anything they explicitly set.
-const _storedSettings = loadJ('postur_settings');
-const _hadStoredSettings = _storedSettings && Object.keys(_storedSettings).length > 0;
-let settings = { ...DEFS, ..._storedSettings };
-if (_hadStoredSettings) {
-  if (!Object.prototype.hasOwnProperty.call(_storedSettings, 'frontCam')) settings.frontCam = true;
-  if (!Object.prototype.hasOwnProperty.call(_storedSettings, 'exercise')) settings.exercise = 'squat';
-}
+let settings = { ...DEFS, ...loadJ('postur_settings') };
 let audioOn = true;
 
 function saveSets() {
   saveJ('postur_settings', settings);
 }
 
-// ── Voice ───────────────────────────────────────────────────
-// Cache the chosen voice (voices load asynchronously in some browsers).
-let _posturVoice = null;
-let _voiceTried = false;
-const _PREFERRED_VOICE_NAMES = [
-  'Google UK English Female', 'Google UK English Male',
-  'Google US English',
-  'Microsoft Sonia Online (Natural)', 'Microsoft Sonia',
-  'Microsoft Aria Online (Natural)', 'Microsoft Aria',
-  'Microsoft Ryan Online (Natural)', 'Microsoft Ryan',
-  'Samantha', 'Daniel', 'Karen', 'Moira', 'Tessa',
-];
-
-function _pickVoice() {
-  if (!window.speechSynthesis) return null;
-  const voices = window.speechSynthesis.getVoices();
-  if (!voices || !voices.length) return null;
-  // exact name match in preferred order
-  for (const name of _PREFERRED_VOICE_NAMES) {
-    const v = voices.find((x) => x.name === name);
-    if (v) return v;
-  }
-  // fallback: any en-* voice (prefer en-US/en-GB)
-  return (
-    voices.find((v) => /^en-(US|GB)/i.test(v.lang)) ||
-    voices.find((v) => /^en/i.test(v.lang)) ||
-    voices[0]
-  );
-}
-
-function _ensureVoice() {
-  if (_posturVoice || !window.speechSynthesis) return _posturVoice;
-  _posturVoice = _pickVoice();
-  if (!_posturVoice && !_voiceTried) {
-    _voiceTried = true;
-    window.speechSynthesis.addEventListener('voiceschanged', () => {
-      _posturVoice = _pickVoice();
-    });
-  }
-  return _posturVoice;
-}
-if (typeof window !== 'undefined' && window.speechSynthesis) {
-  // Trigger voice list load early
-  try { window.speechSynthesis.getVoices(); } catch {}
-  _ensureVoice();
-}
-
-// Throttle: ignore identical cues within 600ms to prevent spam.
-let _lastSpoken = '';
-let _lastSpokenAt = 0;
-
 function say(t) {
   if (!settings.voice || !audioOn || !window.speechSynthesis) return;
-  const text = String(t || '').trim();
-  if (!text) return;
-  const now = Date.now();
-  if (text === _lastSpoken && now - _lastSpokenAt < 600) return;
-  _lastSpoken = text;
-  _lastSpokenAt = now;
-  try {
-    const u = new SpeechSynthesisUtterance(text);
-    const v = _ensureVoice();
-    if (v) u.voice = v;
-    u.rate = 1.0;
-    u.pitch = 1.0;
-    u.volume = 1.0;
-    u.lang = (v && v.lang) || 'en-US';
-    speechSynthesis.cancel();
-    speechSynthesis.speak(u);
-  } catch (err) {
-    console.warn('[say] speech failed:', err);
-  }
+  const u = new SpeechSynthesisUtterance(t);
+  u.rate = 1.1;
+  u.pitch = 0.95;
+  speechSynthesis.cancel();
+  speechSynthesis.speak(u);
 }
 
 function haptic(p) {
@@ -356,45 +271,6 @@ on('setRest', 'change', (e) => {
   e.target.value = settings.restDuration;
   saveSets();
 });
-
-// Voice test button — gives the user immediate feedback that voice works.
-on('testVoiceBtn', 'click', () => {
-  // Force-bypass throttle for the test by clearing the dedup state.
-  _lastSpoken = '';
-  _lastSpokenAt = 0;
-  if (!window.speechSynthesis) {
-    if (typeof showToast === 'function') showToast('Voice not supported on this browser', 'error', 3000);
-    return;
-  }
-  if (!settings.voice) {
-    if (typeof showToast === 'function') showToast('Voice cues are turned off', 'info', 3000);
-    return;
-  }
-  say('Postur voice feedback is ready.');
-});
-
-/* ---------- Exercise selector ------------------------------- */
-
-function renderExerciseChips() {
-  const chips = document.querySelectorAll('.exercise-chip');
-  chips.forEach((chip) => {
-    const isSelected = chip.dataset.exercise === settings.exercise;
-    chip.classList.toggle('selected', isSelected);
-    chip.setAttribute('aria-pressed', isSelected ? 'true' : 'false');
-  });
-}
-
-document.addEventListener('click', (e) => {
-  const chip = e.target && e.target.closest && e.target.closest('.exercise-chip');
-  if (!chip) return;
-  const ex = chip.dataset.exercise;
-  if (!ex || !EXERCISES[ex]) return;
-  settings.exercise = ex;
-  saveSets();
-  renderExerciseChips();
-});
-
-setTimeout(renderExerciseChips, 0);
 
 /* ---------- State -------------------------------------------- */
 
@@ -729,19 +605,16 @@ function renderHistory() {
 
   el.innerHTML = sets.slice().reverse().map((s) => {
     const g = String(s.grade || 'C').toLowerCase();
-    // exerciseLabel may be missing on old history entries — fall back gracefully.
-    const exLabel = s.exerciseLabel || (s.exercise && EXERCISES[s.exercise] && EXERCISES[s.exercise].label) || '';
-    const dateText = new Date(s.date).toLocaleDateString('en-US', {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
     return `
       <div class="history-item">
         <div class="history-item-top">
-          <span class="history-date">${exLabel ? `${exLabel} · ` : ''}${dateText}</span>
+          <span class="history-date">${new Date(s.date).toLocaleDateString('en-US', {
+            weekday: 'short',
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+          })}</span>
           <span class="history-grade ${g}">${s.grade || '-'}</span>
         </div>
         <div class="history-item-stats">
@@ -1496,44 +1369,32 @@ async function flipCamera() {
   settings.frontCam = !settings.frontCam;
   saveSets();
   await startCamera();
-  showToast(settings.frontCam ? 'Front camera' : 'Back camera', 'info', 1500);
 }
 
-// Double-tap-anywhere to flip camera while a camera-mode workout is running.
-// Ignores taps on interactive UI (buttons, links, inputs, panels, modals,
-// the cam permission dialog, etc.) so it never fires accidentally.
 let lastScreenTap = 0;
-const DOUBLE_TAP_MS = 350;
-const _IGNORE_DOUBLE_TAP_SELECTOR = [
-  'button', 'a', 'input', 'textarea', 'select', 'label',
-  '.panel', '.modal', '.cam-permission', '.warmup-overlay',
-  '.exercise-chip', '.toggle', '.btn-primary', '.btn-secondary',
-  '#summary',
-].join(',');
 
-function _handleDoubleTap(e) {
-  if (!running || paused || manualMode || noCameraMode) return;
-  const ignored = e.target && e.target.closest && e.target.closest(_IGNORE_DOUBLE_TAP_SELECTOR);
-  if (ignored) return;
+document.addEventListener('touchend', async (e) => {
+  if (!running || manualMode) return;
+
+  const tappedButton = e.target.closest('button, a, input, textarea, select, .panel, .modal');
+  if (tappedButton) return;
+
   const now = Date.now();
-  if (now - lastScreenTap < DOUBLE_TAP_MS) {
+
+  if (now - lastScreenTap < 350) {
     lastScreenTap = 0;
-    flipCamera().catch((err) => {
+
+    try {
+      showToast('Flipping camera...', 'info', 1200);
+      await flipCamera();
+    } catch (err) {
       console.warn('[CameraFlip] Double tap flip failed:', err);
       showToast('Could not flip camera', 'error', 2000);
-    });
+    }
   } else {
     lastScreenTap = now;
   }
-}
-
-// Use pointerup if available (covers both touch + mouse), else fall back.
-if (window.PointerEvent) {
-  document.addEventListener('pointerup', _handleDoubleTap);
-} else {
-  document.addEventListener('touchend', _handleDoubleTap);
-  document.addEventListener('click', _handleDoubleTap);
-}
+});
 
 if (camFlipBtn) camFlipBtn.addEventListener('click', flipCamera);
 
@@ -1949,14 +1810,6 @@ async function posturBeginWorkout({ skipCamera = false } = {}) {
   startBtn.disabled = true;
   startNoCameraBtn.disabled = true;
 
-  // Exercise-aware start. Only Squat uses MediaPipe auto-tracking right now.
-  const exercise = getExercise();
-  const isCameraExercise = exercise.mode === 'camera';
-  if (!isCameraExercise && !skipCamera) {
-    showToast(`${exercise.label} tracking coming soon — using manual mode.`, 'info', 3500);
-    skipCamera = true;
-  }
-
   let cameraOk = false;
 
   if (!skipCamera) {
@@ -1993,7 +1846,7 @@ async function posturBeginWorkout({ skipCamera = false } = {}) {
 
   if (repsEl) repsEl.textContent = '0';
   if (depthEl) depthEl.textContent = '--';
-  if (phaseEl) phaseEl.textContent = manualMode ? exercise.manualLabel : 'standing';
+  if (phaseEl) phaseEl.textContent = manualMode ? 'manual' : 'standing';
   if (angleEl) angleEl.textContent = '--';
   if (scoreValue) scoreValue.textContent = '--';
   updateScoreRing(0);
@@ -2007,7 +1860,6 @@ async function posturBeginWorkout({ skipCamera = false } = {}) {
   hideEl(summaryEl);
   hideEl(framingHint);
   hideEl(D('homeCard'));
-  hideEl(D('exerciseCard'));
   showEl(D('statsStrip'));
   hideEl(aiCoaching);
   showEl(aiCoachBtn);
@@ -2017,24 +1869,22 @@ async function posturBeginWorkout({ skipCamera = false } = {}) {
   if (manualMode) {
     showEl(placeholder);
     if (placeholderText) {
-      const repNoun = exercise.label === 'Plank' ? 'second / hold' : 'rep';
       placeholderText.textContent = skipCamera
-        ? `${exercise.label} — tap + Rep to log each ${repNoun}`
-        : `Camera unavailable — tap + Rep to log each ${repNoun}`;
+        ? 'Manual mode — tap + Rep to log each squat'
+        : 'Camera unavailable — tap + Rep to log each squat';
     }
 
     const statusText = hudStatus ? hudStatus.querySelector('span:last-child') : null;
-    if (statusText) statusText.textContent = exercise.manualLabel;
+    if (statusText) statusText.textContent = 'Manual mode';
     setStatusDot('warning');
     hideEl(cueOverlay);
 
     startTimer();
     haptic(100);
-    say(`${exercise.label} ready`);
+    say('Manual mode ready');
   } else {
     hideEl(cueOverlay);
-    // Countdown removed — go straight to tracking. (doCountdown still defined
-    // for back-compat, but we never call it on workout start.)
+    await runCountdown();
     startTimer();
     haptic(100);
     say(settings.userName ? `let's cook ${settings.userName}` : "let's go");
@@ -2168,7 +2018,6 @@ function finishWorkout() {
   }
 
   const sets = loadHistory();
-  const _ex = getExercise();
   sets.push({
     date: new Date().toISOString(),
     reps: setData.length,
@@ -2178,8 +2027,6 @@ function finishWorkout() {
     grade,
     duration,
     repData: setData,
-    exercise: settings.exercise || 'squat',
-    exerciseLabel: _ex.label,
   });
   saveHist(sets);
 
@@ -2226,8 +2073,6 @@ function resetForNewSet() {
 
   hideEl(D('statsStrip'));
   showEl(D('homeCard'));
-  showEl(D('exerciseCard'));
-  renderExerciseChips();
   updateHomeCard();
 
   if (repsEl) repsEl.textContent = '0';
@@ -2306,7 +2151,7 @@ if (manualRepBtn) {
     });
 
     if (repsEl) repsEl.textContent = String(repCount);
-    if (phaseEl) phaseEl.textContent = getExercise().manualLabel;
+    if (phaseEl) phaseEl.textContent = 'manual';
     if (angleEl) angleEl.textContent = '--';
 
     updateScoreRing(repScore);
