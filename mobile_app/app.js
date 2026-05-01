@@ -202,7 +202,7 @@ function fmtTime(ms) {
 /* ---------- Settings ----------------------------------------- */
 
 const DEFS = {
-  frontCam: false,
+  frontCam: true,
   voice: true,
   haptic: true,
   countdown: true,
@@ -1371,6 +1371,31 @@ async function flipCamera() {
   await startCamera();
 }
 
+let lastScreenTap = 0;
+
+document.addEventListener('touchend', async (e) => {
+  if (!running || manualMode) return;
+
+  const tappedButton = e.target.closest('button, a, input, textarea, select, .panel, .modal');
+  if (tappedButton) return;
+
+  const now = Date.now();
+
+  if (now - lastScreenTap < 350) {
+    lastScreenTap = 0;
+
+    try {
+      showToast('Flipping camera...', 'info', 1200);
+      await flipCamera();
+    } catch (err) {
+      console.warn('[CameraFlip] Double tap flip failed:', err);
+      showToast('Could not flip camera', 'error', 2000);
+    }
+  } else {
+    lastScreenTap = now;
+  }
+});
+
 if (camFlipBtn) camFlipBtn.addEventListener('click', flipCamera);
 
 function stopCameraStream() {
@@ -1384,6 +1409,7 @@ function stopCameraStream() {
   if (cameraWrap) cameraWrap.classList.remove('is-front');
   if (ctx && canvas) ctx.clearRect(0, 0, canvas.width, canvas.height);
 }
+
 
 /* ---------- Pose drawing ------------------------------------- */
 
