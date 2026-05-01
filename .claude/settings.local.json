@@ -29,7 +29,8 @@
       "Bash(node -e \"const fs=require\\('fs'\\); const lines=fs.readFileSync\\('/tmp/v8b6dde3.js','utf8'\\).split\\('\\\\n'\\); let depth=0; for\\(let i=0; i<lines.length; i++\\){ const l=lines[i]; for\\(const c of l\\){ if\\(c==='{'\\) depth++; else if\\(c==='}'\\) depth--; } if\\(i>=1070 && i<=1080\\) console.log\\(\\(i+1\\)+'\\\\t depth='+depth+'\\\\t'+l\\); }\")",
       "Bash(git pull *)",
       "Bash(curl -s https://posture-plum.vercel.app/app.js)",
-      "Bash(curl -s https://posture-plum.vercel.app/app.js -o /tmp/prod.js)"
+      "Bash(curl -s https://posture-plum.vercel.app/app.js -o /tmp/prod.js)",
+      "Bash(grep -n \"^async function posturBeginWorkout\\\\|^function posturBeginWorkout\\\\|^}$\" mobile_app/app.js)"
     ]
   }
 }
