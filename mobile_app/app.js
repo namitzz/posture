@@ -5,7 +5,7 @@ window.addEventListener('error', (e) => {
 window.addEventListener('unhandledrejection', (e) => {
   console.error('[UnhandledPromise]', e.reason);
 });
-const POSTUR_BUILD = 'v11-delegated-camperm';
+const POSTUR_BUILD = 'v12-hoisted-startworkout';
 
 // Defined at the top of the file so it's available immediately, regardless
 // of what happens later. Looks up the modal at call time (not at parse time).
@@ -18,6 +18,19 @@ window.showCamPermission = function showCamPermission() {
 // Document-level click delegation for the camera permission dialog buttons.
 // Attached at the top of the file so it works even if later top-level code
 // throws and halts script execution (which would skip per-element listeners).
+//
+// Resolves startWorkout via three fallbacks because we've seen specific
+// top-level assignments silently not happen in this bundle:
+//   1. plain function declaration (hoisted to global scope)
+//   2. window.startWorkout (legacy explicit assignment)
+//   3. globalThis.startWorkout (Codex bot's earlier fix)
+function _resolveStartWorkout() {
+  if (typeof startWorkout === 'function') return startWorkout;
+  if (typeof window !== 'undefined' && typeof window.startWorkout === 'function') return window.startWorkout;
+  if (typeof globalThis !== 'undefined' && typeof globalThis.startWorkout === 'function') return globalThis.startWorkout;
+  return null;
+}
+
 document.addEventListener('click', (e) => {
   const allow = e.target.closest && e.target.closest('#camPermAllow');
   const cancel = e.target.closest && e.target.closest('#camPermCancel');
@@ -26,8 +39,9 @@ document.addEventListener('click', (e) => {
     localStorage.setItem('postur_cam_asked', '1');
     const modal = document.getElementById('camPermission');
     if (modal) modal.classList.add('hidden');
-    if (typeof window.startWorkout === 'function') {
-      window.startWorkout().catch(err => console.error('[CamPerm] startWorkout threw:', err));
+    const sw = _resolveStartWorkout();
+    if (sw) {
+      sw().catch(err => console.error('[CamPerm] startWorkout threw:', err));
     } else {
       console.error('[CamPerm] startWorkout is not defined yet');
       alert('startWorkout missing — see console');
@@ -1131,7 +1145,10 @@ if (camPermCancelBtn && camPermissionModal) {
   });
 }
 
-globalThis.startWorkout = async function startWorkout({ skipCamera = false } = {}) {
+// Plain async function declaration so it gets hoisted into the global scope
+// at parse time. Also explicitly mirror to window.startWorkout for the
+// document-level click delegation at the top of the file.
+async function startWorkout({ skipCamera = false } = {}) {
   // Triggered from a real user gesture — unlock iOS audio + acquire wake lock now
   unlockAudio();
   acquireWakeLock();
