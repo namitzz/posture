@@ -10,6 +10,27 @@ window.addEventListener('unhandledrejection', (e) => {
 const POSTUR_BUILD = 'v15-exercises-voice-doubletap';
 console.log('[Init] postur', POSTUR_BUILD, 'app.js parsing started');
 
+const POSTUR_DEV_RESET_ON_RELOAD = true;
+
+if (POSTUR_DEV_RESET_ON_RELOAD) {
+  try {
+    [
+      'postur_settings',
+      'postur_history',
+      'postur_records',
+      'postur_streak',
+      'postur_achievements',
+      'postur_onboarded',
+      'postur_cam_asked',
+    ].forEach((key) => localStorage.removeItem(key));
+
+    sessionStorage.removeItem('postur_session_started');
+    console.log('[DevReset] Cleared Postur local/session state on reload');
+  } catch (err) {
+    console.warn('[DevReset] Failed to clear state:', err);
+  }
+}
+
 /* ---------- DOM helpers ------------------------------------- */
 
 const $ = (id) => document.getElementById(id);

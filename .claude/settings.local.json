@@ -30,7 +30,9 @@
       "Bash(git pull *)",
       "Bash(curl -s https://posture-plum.vercel.app/app.js)",
       "Bash(curl -s https://posture-plum.vercel.app/app.js -o /tmp/prod.js)",
-      "Bash(grep -n \"^async function posturBeginWorkout\\\\|^function posturBeginWorkout\\\\|^}$\" mobile_app/app.js)"
+      "Bash(grep -n \"^async function posturBeginWorkout\\\\|^function posturBeginWorkout\\\\|^}$\" mobile_app/app.js)",
+      "Bash(git revert *)",
+      "Bash(git stash *)"
     ]
   }
 }
