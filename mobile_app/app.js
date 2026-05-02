@@ -259,11 +259,25 @@ function saveSets() {
 let _posturVoice = null;
 let _voiceTried = false;
 const _PREFERRED_VOICE_NAMES = [
-  'Google UK English Female', 'Google UK English Male',
-  'Google US English',
-  'Microsoft Sonia Online (Natural)', 'Microsoft Sonia',
-  'Microsoft Aria Online (Natural)', 'Microsoft Aria',
-  'Microsoft Ryan Online (Natural)', 'Microsoft Ryan',
+  // Most natural-sounding neural voices first (Edge/Windows 11)
+  'Microsoft Ava Online (Natural) - English (United States)',
+  'Microsoft Ava Online (Natural)',
+  'Microsoft Jenny Online (Natural) - English (United States)',
+  'Microsoft Jenny Online (Natural)',
+  'Microsoft Aria Online (Natural) - English (United States)',
+  'Microsoft Aria Online (Natural)',
+  'Microsoft Emma Online (Natural)',
+  'Microsoft Sonia Online (Natural) - English (United Kingdom)',
+  'Microsoft Sonia Online (Natural)',
+  'Microsoft Libby Online (Natural)',
+  'Microsoft Guy Online (Natural)',
+  'Microsoft Ryan Online (Natural)',
+  // Apple enhanced/premium voices (iOS/macOS) — much more natural than default
+  'Samantha (Enhanced)', 'Ava (Premium)', 'Evan (Enhanced)', 'Allison (Enhanced)',
+  'Serena (Premium)', 'Daniel (Enhanced)', 'Karen (Enhanced)', 'Moira (Enhanced)',
+  // Google / fallbacks
+  'Google UK English Female', 'Google US English', 'Google UK English Male',
+  'Microsoft Sonia', 'Microsoft Aria', 'Microsoft Ryan',
   'Samantha', 'Daniel', 'Karen', 'Moira', 'Tessa',
 ];
 
@@ -1575,6 +1589,75 @@ function stopCameraStream() {
 }
 
 
+/* ---------- six_seven_meme gesture (isolated, optional) ------ */
+// Wrist-only motion detector. Does NOT require HandLandmarker.
+// Safe by design: returns false on any missing/invalid input.
+let sixSevenHistory = [];
+let lastSixSevenAt = 0;
+const SIX_SEVEN_COOLDOWN_MS = 1000;
+const SIX_SEVEN_WINDOW = 10;
+const SIX_SEVEN_MIN_ALTERNATIONS = 3;
+const SIX_SEVEN_MIN_DELTA = 0.012;
+
+function getHandWristY(handLandmarks) {
+  try {
+    if (!handLandmarks) return null;
+    const p = Array.isArray(handLandmarks) ? handLandmarks[0] : handLandmarks;
+    if (!p || typeof p.y !== 'number' || !isFinite(p.y)) return null;
+    if (p.visibility != null && p.visibility < 0.3) return null;
+    return p.y;
+  } catch { return null; }
+}
+
+function isMostlyOpenPalm(handLandmarks) {
+  // Wrist-only fallback: pose model has no finger joints, so finger
+  // extension cannot be verified. Stub kept so a future HandLandmarker
+  // can drop in here without changing call sites.
+  return getHandWristY(handLandmarks) != null;
+}
+
+function detectSixSevenMeme(leftHandLandmarks, rightHandLandmarks) {
+  try {
+    const ly = getHandWristY(leftHandLandmarks);
+    const ry = getHandWristY(rightHandLandmarks);
+    if (ly == null || ry == null) return false;
+    if (!isMostlyOpenPalm(leftHandLandmarks) || !isMostlyOpenPalm(rightHandLandmarks)) return false;
+
+    const now = (typeof performance !== 'undefined' && performance.now)
+      ? performance.now() : Date.now();
+
+    sixSevenHistory.push({ t: now, ly, ry });
+    if (sixSevenHistory.length > SIX_SEVEN_WINDOW) {
+      sixSevenHistory.splice(0, sixSevenHistory.length - SIX_SEVEN_WINDOW);
+    }
+    if (sixSevenHistory.length < 4) return false;
+    if (now - lastSixSevenAt < SIX_SEVEN_COOLDOWN_MS) return false;
+
+    let oppositeFrames = 0;
+    let lastRelSign = 0;
+    let signFlips = 0;
+    for (let i = 1; i < sixSevenHistory.length; i++) {
+      const dl = sixSevenHistory[i].ly - sixSevenHistory[i - 1].ly;
+      const dr = sixSevenHistory[i].ry - sixSevenHistory[i - 1].ry;
+      if (Math.abs(dl) < SIX_SEVEN_MIN_DELTA || Math.abs(dr) < SIX_SEVEN_MIN_DELTA) continue;
+      if (dl * dr < 0) {
+        oppositeFrames++;
+        const relSign = dl > dr ? 1 : -1;
+        if (lastRelSign !== 0 && relSign !== lastRelSign) signFlips++;
+        lastRelSign = relSign;
+      }
+    }
+
+    if (oppositeFrames >= SIX_SEVEN_MIN_ALTERNATIONS && signFlips >= 1) {
+      lastSixSevenAt = now;
+      sixSevenHistory = [];
+      return true;
+    }
+    return false;
+  } catch { return false; }
+}
+/* -------------------------------------------------------------- */
+
 /* ---------- Pose drawing ------------------------------------- */
 
 const SKEL = [[11, 13], [13, 15], [12, 14], [14, 16], [11, 12], [11, 23], [12, 24], [23, 24], [23, 25], [25, 27], [24, 26], [26, 28]];
@@ -1864,6 +1947,12 @@ async function loop() {
     lastPersonSeenAt = Date.now();
     calibrateDepthGuide(lm);
     drawPose(lm);
+
+    // Optional six_seven_meme gesture — uses pose wrists (15=L, 16=R).
+    // Safe: detectSixSevenMeme returns false on any missing data.
+    if (detectSixSevenMeme(lm[15], lm[16])) {
+      console.log('[gesture] six_seven_meme detected');
+    }
 
     const lk = calcAngle(lm[23], lm[25], lm[27]);
     const rk = calcAngle(lm[24], lm[26], lm[28]);
