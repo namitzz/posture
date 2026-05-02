@@ -1666,6 +1666,19 @@ function stopCameraStream() {
 let sixSevenHistory = [];
 let lastSixSevenAt = 0;
 let _sixSevenModeAnnounced = false;
+
+// Fast counter state — independent of detectSixSevenMeme()
+let _ssLastWristY = { l: null, r: null };
+let _ssLastDir = 0;          // -1 = L↓R↑, +1 = L↑R↓
+let _ssLastCountAt = 0;
+const SS_COUNT_COOLDOWN_MS = 200;
+const SS_MIN_DELTA = 0.010;
+
+// 15-second 6-7 Detect challenge state (per-entry)
+const SIX_SEVEN_CHALLENGE_MS = 15000;
+let _sixSevenChallengeStart = 0;
+let _sixSevenCount = 0;
+let _sixSevenChallengeDone = false;
 const SIX_SEVEN_COOLDOWN_MS = 1000;
 const SIX_SEVEN_WINDOW = 10;
 const SIX_SEVEN_MIN_ALTERNATIONS = 3;
@@ -1725,6 +1738,47 @@ function detectSixSevenMeme(leftHandLandmarks, rightHandLandmarks) {
       sixSevenHistory = [];
       return true;
     }
+    return false;
+  } catch { return false; }
+}
+
+// Fast cycle counter for the 15-second challenge. Returns true once per
+// completed alternating cycle. Independent of detectSixSevenMeme()'s
+// history/cooldown so it captures quick reps.
+function updateSixSevenCount(leftWrist, rightWrist) {
+  try {
+    const ly = getHandWristY(leftWrist);
+    const ry = getHandWristY(rightWrist);
+    if (ly == null || ry == null) {
+      _ssLastWristY = { l: null, r: null };
+      _ssLastDir = 0;
+      return false;
+    }
+
+    const prevL = _ssLastWristY.l;
+    const prevR = _ssLastWristY.r;
+    _ssLastWristY = { l: ly, r: ry };
+    if (prevL == null || prevR == null) return false;
+
+    const dl = ly - prevL; // y grows downward
+    const dr = ry - prevR;
+    if (Math.abs(dl) < SS_MIN_DELTA || Math.abs(dr) < SS_MIN_DELTA) return false;
+
+    let dir = 0;
+    if (dl < 0 && dr > 0) dir = 1;        // L up + R down
+    else if (dl > 0 && dr < 0) dir = -1;  // L down + R up
+    else return false;                     // same direction = jitter, not gesture
+
+    const now = (typeof performance !== 'undefined' && performance.now)
+      ? performance.now() : Date.now();
+    if (now - _ssLastCountAt < SS_COUNT_COOLDOWN_MS) return false;
+
+    if (_ssLastDir !== 0 && dir !== _ssLastDir) {
+      _ssLastDir = dir;
+      _ssLastCountAt = now;
+      return true;
+    }
+    _ssLastDir = dir;
     return false;
   } catch { return false; }
 }
@@ -2025,15 +2079,38 @@ async function loop() {
     if (_currentExercise && _currentExercise.id === 'six_seven_detect') {
       if (!_sixSevenModeAnnounced) {
         _sixSevenModeAnnounced = true;
-        showToast('6 7 Detect mode', 'info', 1200);
+        _sixSevenChallengeStart = performance.now();
+        _sixSevenCount = 0;
+        _sixSevenChallengeDone = false;
+        _ssLastWristY = { l: null, r: null };
+        _ssLastDir = 0;
+        _ssLastCountAt = 0;
+        safeText('reps', 0);
+        showToast('6 7 Detect — 15s challenge', 'info', 1500);
       }
-      if (detectSixSevenMeme(lm[15], lm[16])) {
-        showToast('6 7 detected', 'info', 1200);
-        console.log('[gesture] six_seven_meme detected');
-        safeText('phase', '6 7 detected');
+
+      const _now = performance.now();
+      const _elapsed = _now - _sixSevenChallengeStart;
+
+      if (_elapsed < SIX_SEVEN_CHALLENGE_MS) {
+        if (updateSixSevenCount(lm[15], lm[16])) {
+          _sixSevenCount++;
+          console.log('[gesture] six_seven_meme detected', _sixSevenCount);
+          safeText('reps', _sixSevenCount);
+        }
+        const remaining = Math.max(0, Math.ceil((SIX_SEVEN_CHALLENGE_MS - _elapsed) / 1000));
+        safeText('phase', `6 7 — ${remaining}s — count ${_sixSevenCount}`);
       } else {
-        safeText('phase', 'detecting');
+        const score = Math.min(100, Math.round((_sixSevenCount / 12) * 100));
+        if (!_sixSevenChallengeDone) {
+          _sixSevenChallengeDone = true;
+          showToast(`6 7 Score: ${score}/100`, 'info', 3000);
+          console.log('[gesture] six_seven challenge finished, score=', _sixSevenCount);
+          safeText('reps', _sixSevenCount);
+        }
+        safeText('phase', `Final: ${_sixSevenCount} | Score ${score}/100`);
       }
+
       requestAnimationFrame(loop);
       return;
     }
