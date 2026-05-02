@@ -1763,7 +1763,7 @@ html, body {
 :root {
   --floating-controls-bottom: calc(env(safe-area-inset-bottom, 0px) + 14px);
   --mode-rail-bottom:         calc(env(safe-area-inset-bottom, 0px) + 92px);
-  --exercise-card-bottom:     calc(env(safe-area-inset-bottom, 0px) + 160px);
+  --exercise-card-bottom:     calc(env(safe-area-inset-bottom, 0px) + 150px);
 }
 
 html, body { background: #000; }
@@ -1997,3 +1997,7 @@ html, body { background: #000; }
 
 /* Minimalism: hide top-bar utility icons (still functional via .click()) */
 .topbar-actions .icon-btn { display: none; }
+
+/* Hide the "warm up first" button — kept in DOM for JS refs */
+#warmupBtn,
+.btn-warmup { display: none !important; }
