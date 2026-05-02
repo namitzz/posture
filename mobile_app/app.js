@@ -475,9 +475,30 @@ document.addEventListener('click', (e) => {
   if (!chip) return;
   const ex = chip.dataset.exercise;
   if (!ex || !EXERCISES[ex]) return;
+  const _prevExercise = settings.exercise;
   settings.exercise = ex;
   saveSets();
   renderExerciseChips();
+
+  // Hot-switch: if a workout is already running, reset only mode-specific
+  // state. Camera stream, MediaPipe landmarker, and the existing loop are
+  // intentionally NOT touched here.
+  if (running && _prevExercise !== ex) {
+    if (ex === 'six_seven_detect') {
+      sixSevenHistory = [];
+      lastSixSevenAt = 0;
+      _sixSevenModeAnnounced = false;
+    } else if (_prevExercise === 'six_seven_detect') {
+      // Returning to a pose-scored exercise — reset transient per-rep state
+      // only. repCount, formScore, setData are user progress and preserved.
+      phase = 'standing';
+      minAngle = 180;
+      hadValgus = false;
+      hadLean = false;
+      repStartTime = 0;
+    }
+    if (typeof showToast === 'function') showToast(`Switched to ${EXERCISES[ex].label}`, 'info', 1200);
+  }
 });
 
 loadExercises().then(() => {
