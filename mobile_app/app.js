@@ -2683,3 +2683,42 @@ if ('serviceWorker' in navigator) {
       .catch((err) => console.warn('[SW] Registration failed:', err));
   });
 }
+
+/* ---------- Mode rail (iPhone-camera-style) -------------------- */
+// Reuses existing top-bar buttons & exercise-chip handler.
+// No camera/MediaPipe/loop changes.
+document.addEventListener('click', (e) => {
+  const opt = e.target && e.target.closest && e.target.closest('.mode-option');
+  if (!opt) return;
+  const mode = opt.dataset.mode;
+
+  document.querySelectorAll('.mode-option').forEach((o) => {
+    const sel = o === opt;
+    o.classList.toggle('selected', sel);
+    o.setAttribute('aria-pressed', sel ? 'true' : 'false');
+  });
+
+  if (mode === 'train') {
+    if (settings.exercise === 'six_seven_detect') {
+      const chip = document.querySelector('.exercise-chip[data-exercise="bodyweight_squat"]');
+      if (chip) chip.click();
+    }
+  } else if (mode === 'six_seven') {
+    if (settings.exercise !== 'six_seven_detect') {
+      const chip = document.querySelector('.exercise-chip[data-exercise="six_seven_detect"]');
+      if (chip) chip.click();
+    }
+  } else if (mode === 'history') {
+    if (historyBtn) historyBtn.click();
+  } else if (mode === 'settings') {
+    if (settingsBtn) settingsBtn.click();
+  } else if (mode === 'analytics') {
+    const btn = D('analyticsBtn');
+    if (btn) btn.click();
+    else if (typeof showToast === 'function') showToast('Analytics coming soon', 'info', 1500);
+  } else if (mode === 'achievements') {
+    const btn = D('achieveBtn');
+    if (btn) btn.click();
+    else if (typeof showToast === 'function') showToast('Achievements coming soon', 'info', 1500);
+  }
+});

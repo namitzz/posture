@@ -1760,6 +1760,12 @@ html, body {
    MINIMALIST CAMERA-FIRST OVERRIDES (append-only)
    ============================================================ */
 
+:root {
+  --floating-controls-bottom: calc(env(safe-area-inset-bottom, 0px) + 14px);
+  --mode-rail-bottom:         calc(env(safe-area-inset-bottom, 0px) + 92px);
+  --exercise-card-bottom:     calc(env(safe-area-inset-bottom, 0px) + 160px);
+}
+
 html, body { background: #000; }
 
 /* Full-viewport shell; children float above the camera. */
@@ -1863,7 +1869,7 @@ html, body { background: #000; }
 .exercise-card {
   position: fixed;
   left: 12px; right: 12px;
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 96px);
+  bottom: var(--exercise-card-bottom);
   margin: 0;
   padding: 10px 12px;
   border-radius: 18px;
@@ -1906,7 +1912,7 @@ html, body { background: #000; }
 .workout-controls {
   position: fixed;
   left: 12px; right: 12px;
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 14px);
+  bottom: var(--floating-controls-bottom);
   padding: 10px 12px;
   border-radius: 22px;
   z-index: 9;
@@ -1953,3 +1959,41 @@ html, body { background: #000; }
 
 /* Toasts always sit above floating UI and the summary card */
 .toast { z-index: 40; }
+
+/* Bottom mode rail (iPhone Camera–style) */
+.mode-rail {
+  position: fixed;
+  left: 0; right: 0;
+  bottom: var(--mode-rail-bottom);
+  z-index: 11;
+  display: flex;
+  gap: 18px;
+  padding: 6px 18px;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+  background: linear-gradient(180deg, rgba(0,0,0,0), rgba(0,0,0,0.30));
+  pointer-events: auto;
+}
+.mode-rail::-webkit-scrollbar { display: none; }
+.mode-option {
+  flex: 0 0 auto;
+  scroll-snap-align: center;
+  background: transparent;
+  border: 0;
+  color: rgba(255,255,255,0.45);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.55);
+  padding: 6px 4px;
+  cursor: pointer;
+  transition: color .15s, transform .15s;
+}
+.mode-option.selected { color: #fde047; transform: scale(1.06); }
+.mode-option:active { transform: scale(0.96); }
+
+/* Minimalism: hide top-bar utility icons (still functional via .click()) */
+.topbar-actions .icon-btn { display: none; }
