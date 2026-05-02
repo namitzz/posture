@@ -302,21 +302,50 @@ const _PREFERRED_VOICE_NAMES = [
   'Samantha', 'Daniel', 'Karen', 'Moira', 'Tessa',
 ];
 
+let _voicesLogged = false;
 function _pickVoice() {
   if (!window.speechSynthesis) return null;
   const voices = window.speechSynthesis.getVoices();
   if (!voices || !voices.length) return null;
-  // exact name match in preferred order
+
+  if (!_voicesLogged) {
+    _voicesLogged = true;
+    try {
+      console.table(voices.map((v) => ({ name: v.name, lang: v.lang, localService: v.localService })));
+    } catch (_e) {}
+  }
+
+  // 1) Exact name match in preferred order
   for (const name of _PREFERRED_VOICE_NAMES) {
     const v = voices.find((x) => x.name === name);
-    if (v) return v;
+    if (v) { console.log('[Voice] selected:', v.name, v.lang); return v; }
   }
-  // fallback: any en-* voice (prefer en-US/en-GB)
-  return (
-    voices.find((v) => /^en-(US|GB)/i.test(v.lang)) ||
-    voices.find((v) => /^en/i.test(v.lang)) ||
-    voices[0]
-  );
+
+  // 2) Fuzzy match for natural/neural/enhanced/premium voices, English first
+  const NATURAL_KEYWORDS = ['Natural', 'Neural', 'Enhanced', 'Premium', 'Ava', 'Jenny', 'Aria', 'Sonia', 'Libby'];
+  const isEnUS = (v) => /^en-US/i.test(v.lang);
+  const isEnGB = (v) => /^en-GB/i.test(v.lang);
+  const isEn   = (v) => /^en/i.test(v.lang);
+  const hasNaturalKeyword = (v) =>
+    !!v.name && NATURAL_KEYWORDS.some((k) => v.name.indexOf(k) !== -1);
+
+  let v =
+    voices.find((x) => hasNaturalKeyword(x) && isEnUS(x)) ||
+    voices.find((x) => hasNaturalKeyword(x) && isEnGB(x)) ||
+    voices.find((x) => hasNaturalKeyword(x) && isEn(x))   ||
+    voices.find((x) => hasNaturalKeyword(x));
+
+  // 3) Any English voice
+  v = v ||
+    voices.find(isEnUS) ||
+    voices.find(isEnGB) ||
+    voices.find(isEn);
+
+  // 4) Last-resort fallback
+  v = v || voices[0];
+
+  if (v) console.log('[Voice] selected:', v.name, v.lang);
+  return v;
 }
 
 function _ensureVoice() {
@@ -354,8 +383,8 @@ function say(t, opts = {}) {
     const u = new SpeechSynthesisUtterance(text);
     const v = _ensureVoice();
     if (v) u.voice = v;
-    u.rate = 1.0;
-    u.pitch = 1.0;
+    u.rate = 0.92;
+    u.pitch = 1.05;
     u.volume = 1.0;
     u.lang = (v && v.lang) || 'en-US';
     speechSynthesis.cancel();
@@ -1615,6 +1644,7 @@ function stopCameraStream() {
 // Safe by design: returns false on any missing/invalid input.
 let sixSevenHistory = [];
 let lastSixSevenAt = 0;
+let _sixSevenModeAnnounced = false;
 const SIX_SEVEN_COOLDOWN_MS = 1000;
 const SIX_SEVEN_WINDOW = 10;
 const SIX_SEVEN_MIN_ALTERNATIONS = 3;
@@ -1968,6 +1998,24 @@ async function loop() {
     lastPersonSeenAt = Date.now();
     calibrateDepthGuide(lm);
     drawPose(lm);
+
+    // 6-7 Detect mode: skip squat scoring; gesture-only output.
+    const _currentExercise = getExercise();
+    if (_currentExercise && _currentExercise.id === 'six_seven_detect') {
+      if (!_sixSevenModeAnnounced) {
+        _sixSevenModeAnnounced = true;
+        showToast('6 7 Detect mode', 'info', 1200);
+      }
+      if (detectSixSevenMeme(lm[15], lm[16])) {
+        showToast('6 7 detected', 'info', 1200);
+        console.log('[gesture] six_seven_meme detected');
+        safeText('phase', '6 7 detected');
+      } else {
+        safeText('phase', 'detecting');
+      }
+      requestAnimationFrame(loop);
+      return;
+    }
 
     // Optional six_seven_meme gesture — uses pose wrists (15=L, 16=R).
     // Safe: detectSixSevenMeme returns false on any missing data.

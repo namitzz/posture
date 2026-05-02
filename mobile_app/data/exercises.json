@@ -1,5 +1,6 @@
 [
   {"id":"bodyweight_squat","label":"Bodyweight Squat","category":"legs","muscleGroups":["quads","glutes"],"equipment":"None","equipmentType":"none","trackingMode":"camera","supported":true,"primaryMetric":"kneeAngle","notes":"Primary supported camera exercise."},
+  {"id":"six_seven_detect","label":"6 7 Detect","category":"meme","muscleGroups":["arms"],"equipment":"None","equipmentType":"none","trackingMode":"camera","supported":true,"primaryMetric":"gesture","notes":"Detects the six-seven meme hand motion using pose wrist movement."},
   {"id":"plank","label":"Plank","category":"core","muscleGroups":["core"],"equipment":"None","equipmentType":"none","trackingMode":"timer","supported":false,"primaryMetric":"holdTime","notes":"Manual hold timer flow."},
   {"id":"side_plank","label":"Side Plank","category":"core","muscleGroups":["obliques"],"equipment":"None","equipmentType":"none","trackingMode":"timer","supported":false,"primaryMetric":"holdTime","notes":"Timer-based hold."},
   {"id":"lunge","label":"Lunge","category":"legs","muscleGroups":["quads","glutes"],"equipment":"None","equipmentType":"none","trackingMode":"manual","supported":false,"primaryMetric":"reps","notes":"Manual reps."},
