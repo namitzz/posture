@@ -325,7 +325,7 @@ html, body {
   inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
 }
 
 .camera-wrap.is-front video,
@@ -1803,7 +1803,7 @@ html, body { background: #000; }
 .camera-wrap canvas {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
 }
 .camera-wrap canvas { pointer-events: none; }
 
