@@ -10,7 +10,7 @@ window.addEventListener('unhandledrejection', (e) => {
 const POSTUR_BUILD = 'v15-exercises-voice-doubletap';
 console.log('[Init] postur', POSTUR_BUILD, 'app.js parsing started');
 
-const POSTUR_DEV_RESET_ON_RELOAD = False;
+const POSTUR_DEV_RESET_ON_RELOAD = false;
 
 if (POSTUR_DEV_RESET_ON_RELOAD) {
   try {
@@ -2493,7 +2493,7 @@ function finishWorkout() {
     setTimeout(() => showAchievementToast(newAch[0]), pbs.length ? 2000 : 500);
   }
 
- showEl(summaryEl);
+showEl(summaryEl);
 showExerciseSelector();
 hideEl(D('statsStrip'));
 
@@ -2516,8 +2516,6 @@ function resetForNewSet() {
 
   hideEl(D('statsStrip'));
   showEl(D('homeCard'));
-  showEl(D('exerciseCard'));
-  renderExerciseChips();
   updateHomeCard();
 
   if (repsEl) repsEl.textContent = '0';
