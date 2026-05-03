@@ -325,12 +325,13 @@ html, body {
   inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: contain;
+  object-fit: cover;
+  transform: scale(0.94);
 }
 
 .camera-wrap.is-front video,
 .camera-wrap.is-front canvas {
-  transform: scaleX(-1);
+  transform: scaleX(-1) scale(0.94);
 }
 
 .camera-wrap canvas {
@@ -1803,7 +1804,8 @@ html, body { background: #000; }
 .camera-wrap canvas {
   width: 100%;
   height: 100%;
-  object-fit: contain;
+  object-fit: cover;
+  transform: scale(0.94);
 }
 .camera-wrap canvas { pointer-events: none; }
 
@@ -2001,5 +2003,22 @@ html, body { background: #000; }
 /* Hide the "warm up first" button — kept in DOM for JS refs */
 #warmupBtn,
 .btn-warmup {
+  display: none !important;
+}
+
+/* Keep first-time intro screens above the camera-first UI */
+.onboarding,
+.name-screen,
+.splash,
+.cam-permission {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+}
+
+.onboarding.hidden,
+.name-screen.hidden,
+.splash.hidden,
+.cam-permission.hidden {
   display: none !important;
 }
