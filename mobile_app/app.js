@@ -2238,9 +2238,9 @@ async function posturBeginWorkout({ skipCamera = false } = {}) {
   // Exercise-aware start. Only Squat uses MediaPipe auto-tracking right now.
   const exercise = getExercise();
   const cameraExercise = isCameraExercise(exercise);
+
   if (!cameraExercise && !skipCamera) {
-    showToast(`${exercise.label} tracking coming soon — using manual mode.`, 'info', 3500);
-    skipCamera = true;
+    showToast(`${exercise.label} tracking coming soon — camera preview only.`, 'info', 3500);
   }
 
   let cameraOk = false;
@@ -2258,8 +2258,7 @@ async function posturBeginWorkout({ skipCamera = false } = {}) {
   }
 
   noCameraMode = !cameraOk;
-  manualMode = !cameraOk;
-
+  manualMode = !cameraExercise || !cameraOk;
   running = true;
   paused = false;
   phase = 'standing';
@@ -2301,7 +2300,8 @@ async function posturBeginWorkout({ skipCamera = false } = {}) {
   if (aiCoachBtn) aiCoachBtn.disabled = false;
 
   if (manualMode) {
-    showEl(placeholder);
+    if (!cameraOk) showEl(placeholder);
+    else hideEl(placeholder);
     if (placeholderText) {
       placeholderText.textContent = exercise.trackingMode === 'timer'
         ? `${exercise.label} manual mode — use Finish when your hold is done.`
