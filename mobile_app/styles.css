@@ -2000,4 +2000,6 @@ html, body { background: #000; }
 
 /* Hide the "warm up first" button — kept in DOM for JS refs */
 #warmupBtn,
-.btn-warmup { display: none !important; }
+.btn-warmup {
+  display: none !important;
+}

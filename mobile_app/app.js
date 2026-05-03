@@ -10,7 +10,7 @@ window.addEventListener('unhandledrejection', (e) => {
 const POSTUR_BUILD = 'v15-exercises-voice-doubletap';
 console.log('[Init] postur', POSTUR_BUILD, 'app.js parsing started');
 
-const POSTUR_DEV_RESET_ON_RELOAD = true;
+const POSTUR_DEV_RESET_ON_RELOAD = False;
 
 if (POSTUR_DEV_RESET_ON_RELOAD) {
   try {
@@ -58,6 +58,11 @@ function showEl(el) {
 
 function hideEl(el) {
   if (el) el.classList.add('hidden');
+}
+
+function showExerciseSelector() {
+  showEl(D('exerciseCard'));
+  renderExerciseChips();
 }
 
 function loadJ(k) {
@@ -2396,7 +2401,7 @@ function finishWorkout() {
 
   if (setData.length === 0) {
     showEl(startBtn);
-    showEl(D('warmupBtn'));
+    showExerciseSelector();
     startNoCameraBtn.classList.remove('hidden');
     const label = startBtn ? startBtn.querySelector('span') : null;
     if (label) label.textContent = 'Start Workout';
@@ -2488,14 +2493,16 @@ function finishWorkout() {
     setTimeout(() => showAchievementToast(newAch[0]), pbs.length ? 2000 : 500);
   }
 
-  showEl(summaryEl);
-  hideEl(D('statsStrip'));
+ showEl(summaryEl);
+showExerciseSelector();
+hideEl(D('statsStrip'));
+
 }
 
 function resetForNewSet() {
   hideEl(summaryEl);
   showEl(startBtn);
-  showEl(D('warmupBtn'));
+  showExerciseSelector();
   startNoCameraBtn.classList.remove('hidden');
 
   const label = startBtn ? startBtn.querySelector('span') : null;
