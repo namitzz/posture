@@ -253,8 +253,8 @@ function getExerciseLabel(id) { return (EXERCISES[id] && EXERCISES[id].label) ||
 function isCameraExercise(ex) {
   if (!ex) return false;
 
-  // 6-7 needs camera + pose loop, even though it is not squat scoring
-  if (ex.id === 'six_seven_detect') return true;
+  // These use MediaPipe pose tracking.
+  if (ex.id === 'six_seven_detect' || ex.id === 'bicep_curl') return true;
 
   return ex.trackingMode === 'camera' && ex.supported;
 }
@@ -1797,7 +1797,96 @@ function updateSixSevenCount(leftWrist, rightWrist) {
   } catch { return false; }
 }
 /* -------------------------------------------------------------- */
+/* ---------- Bicep curl tracking ------------------------------ */
 
+let curlSide = null;          // 'left' or 'right'
+let curlMinAngle = 180;
+let curlRepStartedAt = 0;
+
+const CURL_THRESH = {
+  extended: 145,
+  curled: 70,
+  minVisibility: 0.45,
+};
+
+function getVisibleElbowAngle(lm) {
+  const leftOk =
+    lm[11]?.visibility > CURL_THRESH.minVisibility &&
+    lm[13]?.visibility > CURL_THRESH.minVisibility &&
+    lm[15]?.visibility > CURL_THRESH.minVisibility;
+
+  const rightOk =
+    lm[12]?.visibility > CURL_THRESH.minVisibility &&
+    lm[14]?.visibility > CURL_THRESH.minVisibility &&
+    lm[16]?.visibility > CURL_THRESH.minVisibility;
+
+  const leftAngle = leftOk ? calcAngle(lm[11], lm[13], lm[15]) : null;
+  const rightAngle = rightOk ? calcAngle(lm[12], lm[14], lm[16]) : null;
+
+  // Use whichever arm is more visible / more actively curling.
+  if (leftAngle != null && rightAngle != null) {
+    return leftAngle < rightAngle
+      ? { side: 'left', angle: leftAngle }
+      : { side: 'right', angle: rightAngle };
+  }
+
+  if (leftAngle != null) return { side: 'left', angle: leftAngle };
+  if (rightAngle != null) return { side: 'right', angle: rightAngle };
+
+  return null;
+}
+
+function updateBicepCurlPhase(angle, side) {
+  const prev = phase;
+
+  if (phase === 'standing' && angle > CURL_THRESH.extended) {
+    phase = 'curl_start';
+    curlSide = side;
+    curlMinAngle = angle;
+    curlRepStartedAt = Date.now();
+  } else if (phase === 'curl_start') {
+    curlMinAngle = Math.min(curlMinAngle, angle);
+
+    if (angle < CURL_THRESH.curled) {
+      phase = 'curl_top';
+    }
+  } else if (phase === 'curl_top') {
+    curlMinAngle = Math.min(curlMinAngle, angle);
+
+    if (angle > CURL_THRESH.extended) {
+      phase = 'standing';
+    }
+  }
+
+  if (prev === 'curl_top' && phase === 'standing') {
+    repCount++;
+
+    const tempoMs = curlRepStartedAt ? Date.now() - curlRepStartedAt : 0;
+
+    let sc = 100;
+    if (curlMinAngle > 90) sc -= 30;
+    else if (curlMinAngle > 75) sc -= 15;
+
+    sc = Math.max(0, Math.min(100, sc));
+
+    setData.push({
+      minAngle: Math.round(curlMinAngle),
+      hadValgus: false,
+      hadLean: false,
+      score: sc,
+      tempoMs,
+      exercise: 'bicep_curl',
+      side: curlSide || side,
+    });
+
+    curlMinAngle = 180;
+    curlRepStartedAt = 0;
+
+    showRepFlash(repCount);
+    haptic([30, 50, 30]);
+    say(sc >= 80 ? `${repCount}, clean curl` : `${repCount}, full range`);
+  }
+}
 /* ---------- Pose drawing ------------------------------------- */
 
 const SKEL = [[11, 13], [13, 15], [12, 14], [14, 16], [11, 12], [11, 23], [12, 24], [23, 24], [23, 25], [25, 27], [24, 26], [26, 28]];
@@ -2071,7 +2160,11 @@ async function loop() {
 
   // Manual exercises should not run pose detection.
   // 6-7 must run pose detection because it uses wrist landmarks.
-  if (manualMode && currentExercise.id !== 'six_seven_detect') return;
+  if (
+  manualMode &&
+  currentExercise.id !== 'six_seven_detect' &&
+  currentExercise.id !== 'bicep_curl'
+) return;
 
   if (!landmarker || !video || !canvas || !ctx) return;
 
@@ -2157,12 +2250,46 @@ async function loop() {
 
     // Optional six_seven_meme gesture — uses pose wrists (15=L, 16=R).
     // Safe: detectSixSevenMeme returns false on any missing data.
-    if (detectSixSevenMeme(lm[15], lm[16])) {
-      console.log('[gesture] six_seven_meme detected');
-    }
+// Bicep Curl mode: elbow-angle rep counter.
+if (_currentExercise && _currentExercise.id === 'bicep_curl') {
+  const curl = getVisibleElbowAngle(lm);
 
-    const lk = calcAngle(lm[23], lm[25], lm[27]);
-    const rk = calcAngle(lm[24], lm[26], lm[28]);
+  if (!curl) {
+    safeText('phase', 'show arm');
+    safeText('angle', '--');
+    setDot('warning');
+
+    const statusText = hudStatus ? hudStatus.querySelector('span:last-child') : null;
+    if (statusText) statusText.textContent = 'Show arm';
+
+    requestAnimationFrame(loop);
+    return;
+  }
+
+  updateBicepCurlPhase(curl.angle, curl.side);
+
+  safeText('reps', repCount);
+  safeText('phase', phase.replace('_', ' '));
+  safeText('angle', Math.round(curl.angle) + '°');
+
+  updateScoreRing(formScore || 80);
+
+  setDot('active');
+  const statusText = hudStatus ? hudStatus.querySelector('span:last-child') : null;
+  if (statusText) statusText.textContent = `Tracking ${curl.side} arm`;
+
+  requestAnimationFrame(loop);
+  return;
+}
+
+// Optional six_seven_meme gesture — uses pose wrists (15=L, 16=R).
+// Safe: detectSixSevenMeme returns false on any missing data.
+if (detectSixSevenMeme(lm[15], lm[16])) {
+  console.log('[gesture] six_seven_meme detected');
+}
+
+const lk = calcAngle(lm[23], lm[25], lm[27]);
+const rk = calcAngle(lm[24], lm[26], lm[28]);
     const ka = Math.min(lk, rk);
 
     minAngle = Math.min(minAngle, ka);
@@ -2301,8 +2428,8 @@ async function posturBeginWorkout({ skipCamera = false } = {}) {
 
   noCameraMode = !cameraOk;
   manualMode = !cameraExercise || !cameraOk;
-  if (exercise.id === 'six_seven_detect' && cameraOk) {
-   manualMode = false;
+  if ((exercise.id === 'six_seven_detect' || exercise.id === 'bicep_curl') && cameraOk) {
+    manualMode = false;
   }
   console.log('[ModeDebug]', {
   cameraOk,
@@ -2315,6 +2442,9 @@ async function posturBeginWorkout({ skipCamera = false } = {}) {
   phase = 'standing';
   repCount = 0;
   minAngle = 180;
+  curlSide = null;
+  curlMinAngle = 180;
+  curlRepStartedAt = 0;
   hadValgus = false;
   hadLean = false;
   setData = [];
