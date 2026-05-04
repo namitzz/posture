@@ -250,7 +250,14 @@ function getExercise() {
   return EXERCISES[settings.exercise] || EXERCISES.bodyweight_squat || EXERCISE_FALLBACK[0];
 }
 function getExerciseLabel(id) { return (EXERCISES[id] && EXERCISES[id].label) || 'Exercise'; }
-function isCameraExercise(ex) { return ex && ex.trackingMode === 'camera' && ex.supported; }
+function isCameraExercise(ex) {
+  if (!ex) return false;
+
+  // 6-7 needs camera + pose loop, even though it is not squat scoring
+  if (ex.id === 'six_seven_detect') return true;
+
+  return ex.trackingMode === 'camera' && ex.supported;
+}
 async function loadExercises() {
   try {
     const res = await fetch('./data/exercises.json', { cache: 'no-store' });
@@ -1678,8 +1685,8 @@ let _sixSevenModeAnnounced = false;
 let _ssLastWristY = { l: null, r: null };
 let _ssLastDir = 0;          // -1 = L↓R↑, +1 = L↑R↓
 let _ssLastCountAt = 0;
-const SS_COUNT_COOLDOWN_MS = 200;
-const SS_MIN_DELTA = 0.010;
+const SS_COUNT_COOLDOWN_MS = 120;
+const SS_MIN_DELTA = 0.005;
 
 // 15-second 6-7 Detect challenge state (per-entry)
 const SIX_SEVEN_CHALLENGE_MS = 15000;
@@ -2058,14 +2065,20 @@ function doCountdown() {
 /* ---------- Main loop ---------------------------------------- */
 
 async function loop() {
-  if (!running || paused || manualMode) return;
+  const currentExercise = getExercise();
+
+  if (!running || paused) return;
+
+  // Manual exercises should not run pose detection.
+  // 6-7 must run pose detection because it uses wrist landmarks.
+  if (manualMode && currentExercise.id !== 'six_seven_detect') return;
+
   if (!landmarker || !video || !canvas || !ctx) return;
 
   canvas.width = video.videoWidth || 720;
   canvas.height = video.videoHeight || 960;
 
   let result;
-
   try {
     result = landmarker.detectForVideo(video, performance.now());
   } catch (err) {
@@ -2084,6 +2097,11 @@ async function loop() {
     // 6-7 Detect mode: skip squat scoring; gesture-only output.
     const _currentExercise = getExercise();
     if (_currentExercise && _currentExercise.id === 'six_seven_detect') {
+      console.log('[6-7 entered]', {
+        exercise: _currentExercise.id,
+        leftWrist: lm[15] ? { y: lm[15].y, visibility: lm[15].visibility } : null,
+        rightWrist: lm[16] ? { y: lm[16].y, visibility: lm[16].visibility } : null
+      });
       if (!_sixSevenModeAnnounced) {
         _sixSevenModeAnnounced = true;
         _sixSevenChallengeStart = performance.now();
@@ -2100,11 +2118,26 @@ async function loop() {
       const _elapsed = _now - _sixSevenChallengeStart;
 
       if (_elapsed < SIX_SEVEN_CHALLENGE_MS) {
-        if (updateSixSevenCount(lm[15], lm[16])) {
+        const counted = updateSixSevenCount(lm[15], lm[16]);
+        console.log('[6-7 count check]', counted);
+
+        if (counted) {
           _sixSevenCount++;
+          repCount = _sixSevenCount;
+
+          setData.push({
+            minAngle: 0,
+            hadValgus: false,
+            hadLean: false,
+            score: 100,
+            tempoMs: 0,
+            gesture: 'six_seven'
+          });
+
           console.log('[gesture] six_seven_meme detected', _sixSevenCount);
           safeText('reps', _sixSevenCount);
         }
+
         const remaining = Math.max(0, Math.ceil((SIX_SEVEN_CHALLENGE_MS - _elapsed) / 1000));
         safeText('phase', `6 7 — ${remaining}s — count ${_sixSevenCount}`);
       } else {
@@ -2241,6 +2274,13 @@ async function posturBeginWorkout({ skipCamera = false } = {}) {
   const exercise = getExercise();
   const cameraExercise = isCameraExercise(exercise);
 
+  console.log('[StartDebug]', {
+  selectedExercise: settings.exercise,
+  exercise,
+  cameraExercise,
+  skipCamera
+  });
+
   if (!cameraExercise && !skipCamera) {
     showToast(`${exercise.label} tracking coming soon — camera preview only.`, 'info', 3500);
   }
@@ -2261,6 +2301,15 @@ async function posturBeginWorkout({ skipCamera = false } = {}) {
 
   noCameraMode = !cameraOk;
   manualMode = !cameraExercise || !cameraOk;
+  if (exercise.id === 'six_seven_detect' && cameraOk) {
+   manualMode = false;
+  }
+  console.log('[ModeDebug]', {
+  cameraOk,
+  noCameraMode,
+  manualMode,
+  exerciseId: exercise.id
+  });
   running = true;
   paused = false;
   phase = 'standing';
@@ -2277,6 +2326,20 @@ async function posturBeginWorkout({ skipCamera = false } = {}) {
   standingHipY = null;
   standingKneeY = null;
   depthGuideY = null;
+
+  if (exercise.id === 'six_seven_detect') {
+    sixSevenHistory = [];
+    lastSixSevenAt = 0;
+    _sixSevenModeAnnounced = false;
+
+    _sixSevenChallengeStart = 0;
+    _sixSevenCount = 0;
+    _sixSevenChallengeDone = false;
+
+    _ssLastWristY = { l: null, r: null };
+    _ssLastDir = 0;
+    _ssLastCountAt = 0;
+  }
 
   if (repsEl) repsEl.textContent = '0';
   if (depthEl) depthEl.textContent = '--';
